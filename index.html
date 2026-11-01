@@ -1,0 +1,1478 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monte Longdon</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+  [hidden] { display: none !important; }
+  body { margin: 0; }
+  /* Diseño: noche fría en las islas. Un solo tema oscuro, a propósito.
+     Letra de máquina de escribir para la historia, monoespaciada para el HUD. */
+  :root {
+    --noche: #070b14;
+    --texto: #e8e2d4;
+    --tenue: #9aa3ad;
+    --bengala: #ffd9a0;
+    --sangre: #b3261e;
+    --panel: rgba(7, 11, 20, 0.74);
+    --historia: "Special Elite", "Courier New", monospace;
+    --hud: "IBM Plex Mono", ui-monospace, monospace;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; overflow: hidden; }
+  body { background: var(--noche); color: var(--texto); font-family: var(--hud); }
+  #juego { position: fixed; inset: 0; }
+  #juego canvas { display: block; cursor: crosshair; }
+
+  /* Pantallas de historia (estilo campaña) */
+  .pantalla {
+    position: fixed; inset: 0; z-index: 5; background: rgba(4, 6, 12, 0.94);
+    display: flex; align-items: center; justify-content: center; overflow-y: auto;
+    padding: 24px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px));
+  }
+  .relato { max-width: 38rem; width: 100%; display: flex; flex-direction: column; gap: 18px; }
+  .relato .lugar { font-size: .8rem; letter-spacing: .22em; text-transform: uppercase; color: var(--tenue); }
+  .relato h1 { font-family: var(--historia); font-weight: 400; font-size: clamp(2rem, 7vw, 3rem); margin: 0; line-height: 1.05; text-wrap: balance; }
+  .relato p { font-family: var(--historia); font-size: 1.1rem; line-height: 1.65; margin: 0; }
+  .relato .escribiendo { min-height: 3.3em; }
+  .relato button {
+    align-self: flex-start; font: 600 1rem var(--hud); letter-spacing: .08em; text-transform: uppercase;
+    background: var(--texto); color: var(--noche); border: 0; padding: 14px 22px; cursor: pointer;
+  }
+  .relato button.secundario { background: transparent; color: var(--tenue); border: 1px solid #3a4250; }
+  .relato button:focus-visible, .mision:focus-visible { outline: 2px solid var(--bengala); outline-offset: 3px; }
+  .botones { display: flex; gap: 12px; flex-wrap: wrap; }
+  .controles { font-size: .8rem; color: var(--tenue); line-height: 1.8; }
+  .controles b { color: var(--texto); font-weight: 600; }
+  .nota { font-size: .78rem; color: var(--tenue); line-height: 1.6; border-left: 2px solid #3a4250; padding-left: 12px; }
+  .aviso-celu { font-size: .8rem; color: var(--bengala); }
+
+  /* Menú de misiones */
+  .misiones { display: flex; flex-direction: column; gap: 10px; }
+  .mision {
+    display: grid; grid-template-columns: 3rem 1fr; gap: 4px 14px; align-items: baseline; text-align: left;
+    background: rgba(232, 226, 212, .04); border: 1px solid #2a313c; color: var(--texto); padding: 14px 16px; cursor: pointer; font: inherit;
+  }
+  .mision:hover { border-color: var(--bengala); }
+  .mision[disabled] { opacity: .45; cursor: default; }
+  .mision[disabled]:hover { border-color: #2a313c; }
+  .mision .num { grid-row: span 2; font-family: var(--historia); font-size: 1.8rem; color: var(--bengala); }
+  .mision .nombre { font-family: var(--historia); font-size: 1.2rem; }
+  .mision .fecha { font-size: .78rem; color: var(--tenue); letter-spacing: .06em; }
+
+  /* HUD */
+  .hud { position: fixed; z-index: 2; pointer-events: none; font-size: .85rem; }
+  #objetivo { top: calc(16px + env(safe-area-inset-top, 0px)); left: calc(16px + env(safe-area-inset-left, 0px)); background: var(--panel); padding: 10px 14px; max-width: min(70vw, 26rem); }
+  #objetivo small { display: block; color: var(--tenue); letter-spacing: .14em; text-transform: uppercase; font-size: .7rem; margin-bottom: 4px; }
+  #objetivo .extra { display: block; color: var(--tenue); margin-top: 4px; font-variant-numeric: tabular-nums; }
+  #brujula { top: calc(16px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; background: var(--panel); padding: 6px 12px; font-variant-numeric: tabular-nums; }
+  #flecha { display: inline-block; color: var(--bengala); }
+  #equipo { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); right: calc(16px + env(safe-area-inset-right, 0px)); background: var(--panel); padding: 10px 14px; text-align: right; font-variant-numeric: tabular-nums; }
+  #equipo .balas { font-size: 1.6rem; font-weight: 600; }
+  #equipo .balas.poca { color: #ff8a6b; }
+  #postura { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); left: calc(16px + env(safe-area-inset-left, 0px)); background: var(--panel); padding: 8px 12px; color: var(--tenue); }
+  #postura.cubierto { color: #a7d18a; }
+  #mensaje { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); font-family: var(--historia); font-size: 1.05rem; text-align: center; text-shadow: 0 1px 6px #000; max-width: 90vw; }
+  #grito { top: 30%; left: 50%; transform: translateX(-50%); font-family: var(--historia); font-size: 1.2rem; text-align: center; text-shadow: 0 1px 8px #000; max-width: 90vw; color: var(--bengala); }
+  #pista { top: 58%; left: 50%; transform: translateX(-50%); background: var(--panel); padding: 6px 12px; font-size: .85rem; }
+  #pista b { color: var(--bengala); }
+  #mira { top: 50%; left: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; }
+  #mira::before, #mira::after { content: ""; position: absolute; background: rgba(232, 226, 212, .8); }
+  #mira::before { left: 8px; top: 0; width: 2px; height: 18px; }
+  #mira::after { top: 8px; left: 0; height: 2px; width: 18px; }
+  #mira.acierto::before, #mira.acierto::after { background: #ff6b5a; }
+  #pausa { top: 50%; left: 50%; transform: translate(-50%, 40px); background: var(--panel); padding: 8px 14px; font-size: .8rem; color: var(--tenue); }
+  #dano { position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 45%, rgba(120, 10, 5, .85) 100%); }
+
+  /* Diálogos */
+  #dialogo {
+    position: fixed; z-index: 3; left: 50%; transform: translateX(-50%);
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px)); width: min(40rem, calc(100vw - 32px));
+    background: rgba(5, 8, 14, 0.9); border-top: 2px solid var(--bengala); padding: 14px 18px 12px;
+    display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+  }
+  #dialogo .quien { font-size: .75rem; letter-spacing: .16em; text-transform: uppercase; color: var(--bengala); }
+  #dialogo .dice { font-family: var(--historia); font-size: 1.12rem; line-height: 1.55; min-height: 3.1em; }
+  #dialogo .seguir { font-size: .72rem; color: var(--tenue); align-self: flex-end; }
+</style>
+
+</head>
+<body>
+<div id="juego"></div>
+<div id="dano"></div>
+
+<!-- Menú principal -->
+<div class="pantalla" id="menu">
+  <div class="relato">
+    <span class="lugar">Islas Malvinas · Junio de 1982</span>
+    <h1>Monte Longdon</h1>
+    <p>Cinco noches en la cresta, con el mismo pelotón. Elegí una misión.</p>
+    <div class="misiones">
+      <button class="mision" data-mision="1"><span class="num">1</span><span class="nombre">Primera Noche</span><span class="fecha">8 de junio · Conocé al pelotón</span></button>
+      <button class="mision" disabled><span class="num">2</span><span class="nombre">Bajo la artillería</span><span class="fecha">9 y 10 de junio · Próximamente</span></button>
+      <button class="mision" data-mision="3"><span class="num">3</span><span class="nombre">La noche del 11</span><span class="fecha">11 de junio · Prototipo de combate</span></button>
+    </div>
+    <div class="controles">
+      <b>Mouse</b> mirar · <b>W A S D</b> caminar · <b>Shift</b> correr · <b>C</b> agacharse<br>
+      <b>Clic</b> disparar · <b>R</b> recargar · <b>F</b> bengala · <b>E</b> hablar o tomar munición · <b>Esc</b> pausa
+    </div>
+    <span class="aviso-celu" id="aviso-celu" hidden>Este prototipo se juega en computadora, con teclado y mouse.</span>
+  </div>
+</div>
+
+<!-- Intro de cada misión -->
+<div class="pantalla" id="intro" hidden>
+  <div class="relato">
+    <span class="lugar" id="intro-lugar"></span>
+    <h1 id="intro-titulo"></h1>
+    <p class="escribiendo" id="linea1"></p>
+    <p class="escribiendo" id="linea2"></p>
+    <div class="botones">
+      <button id="empezar">Empezar</button>
+      <button class="secundario" id="volver">Volver</button>
+    </div>
+  </div>
+</div>
+
+<!-- Final de misión / caída -->
+<div class="pantalla" id="final" hidden>
+  <div class="relato">
+    <span class="lugar" id="final-lugar"></span>
+    <h1 id="final-titulo"></h1>
+    <p id="final-texto1"></p>
+    <p id="final-texto2"></p>
+    <p id="resumen" style="font-family: var(--hud); font-size: .9rem; color: var(--tenue)"></p>
+    <p class="nota">Los personajes de esta historia son inventados. La batalla de Monte Longdon ocurrió de verdad: murieron 31 soldados argentinos y 23 británicos.</p>
+    <div class="botones">
+      <button id="otra-vez">Jugar de nuevo</button>
+      <button class="secundario" id="al-menu">Menú</button>
+    </div>
+  </div>
+</div>
+
+<div class="hud" id="objetivo" hidden><small>Objetivo</small><span id="texto-objetivo"></span><span class="extra" id="extra-objetivo"></span></div>
+<div class="hud" id="brujula" hidden><span id="flecha">▲</span><span id="distancia"></span></div>
+<div class="hud" id="equipo" hidden>
+  <div class="balas" id="balas">20 / 60</div>
+  <div id="bengalas">Bengalas: 4</div>
+</div>
+<div class="hud" id="postura" hidden>De pie</div>
+<div class="hud" id="mensaje"></div>
+<div class="hud" id="grito"></div>
+<div class="hud" id="pista" hidden></div>
+<div class="hud" id="mira" hidden></div>
+<div class="hud" id="pausa" hidden>Pausa · hacé clic para seguir</div>
+<div id="dialogo" hidden>
+  <span class="quien" id="dialogo-quien"></span>
+  <span class="dice" id="dialogo-dice"></span>
+  <span class="seguir">E o clic para seguir</span>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// =============================================================
+// MONTE LONGDON (prototipo: Misión 1 y Misión 3)
+// Hecho con Three.js, una librería para dibujar en 3D en el navegador.
+// La idea de 3D: hay una ESCENA (el mundo), una CÁMARA (tus ojos)
+// y un RENDERER (el que pinta lo que ve la cámara, 60 veces por segundo).
+// =============================================================
+
+// -------------------------------------------------------------
+// 1. ESCENA, CÁMARA Y RENDERER
+// -------------------------------------------------------------
+const contenedor = document.getElementById("juego");
+const escena = new THREE.Scene();
+const COLOR_NOCHE = new THREE.Color(0x0b1220);
+escena.background = COLOR_NOCHE.clone();
+escena.fog = new THREE.FogExp2(0x0b1220, 0.024);   // niebla: lo lejano se pierde en la oscuridad
+
+const camara = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 900);
+camara.rotation.order = "YXZ";   // primero gira a los costados, después arriba/abajo (como tu cabeza)
+escena.add(camara);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+contenedor.appendChild(renderer.domElement);
+addEventListener("resize", () => {
+  camara.aspect = innerWidth / innerHeight;
+  camara.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// -------------------------------------------------------------
+// 2. LUCES: casi nada, es de noche. Un poco de luna fría.
+// -------------------------------------------------------------
+escena.add(new THREE.HemisphereLight(0x3a4a6b, 0x0d0f0a, 0.55));
+const luna = new THREE.DirectionalLight(0x8fa6d6, 0.4);
+luna.position.set(-60, 80, 40);
+escena.add(luna);
+
+// -------------------------------------------------------------
+// 3. EL MONTE, LAS TRINCHERAS Y LOS POZOS
+// La altura del suelo sale de una fórmula: ruido suave + una loma alargada
+// (el monte). Las trincheras y los pozos "cavan" esa fórmula.
+// -------------------------------------------------------------
+function azar2D(x, z) { const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; return s - Math.floor(s); }
+function ruido(x, z) {
+  const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi;
+  const u = xf * xf * (3 - 2 * xf), v = zf * zf * (3 - 2 * zf);
+  const a = azar2D(xi, zi), b = azar2D(xi + 1, zi), c = azar2D(xi, zi + 1), d = azar2D(xi + 1, zi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+
+const TRINCHERA = [[46, -15], [28, -11], [12, -17], [-6, -13], [-24, -19]];
+const ANCHO_TRINCHERA = 2.4, HONDO_TRINCHERA = 1.15;
+const POZOS = [
+  { x: -42, z: -25, r: 1.6, mio: true },
+  { x: -38, z: -7, r: 1.4 },
+  { x: -52, z: -14, r: 1.4 }
+];
+const MI_POZO = POZOS[0];
+const BUNKER = { x: 4, z: -33, w: 8, d: 6 };
+const CRESTA = { x: -6, z: -13 };   // punto de reunión en la trinchera
+
+function distanciaASegmento(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz)));
+  return Math.hypot(px - (ax + t * dx), pz - (az + t * dz));
+}
+function distanciaATrinchera(x, z) {
+  let d = Infinity;
+  for (let i = 0; i < TRINCHERA.length - 1; i++) d = Math.min(d, distanciaASegmento(x, z, ...TRINCHERA[i], ...TRINCHERA[i + 1]));
+  return d;
+}
+const suave = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+function cavado(x, z) {
+  let c = HONDO_TRINCHERA * (1 - suave(ANCHO_TRINCHERA * 0.35, ANCHO_TRINCHERA * 0.6, distanciaATrinchera(x, z)));
+  for (const p of POZOS) c = Math.max(c, 1.1 * (1 - suave(p.r * 0.55, p.r, Math.hypot(x - p.x, z - p.z))));
+  return c;
+}
+const MONTE = { x: 0, z: -20 };
+function alturaNatural(x, z) {
+  let h = 2.5 + ruido(x * 0.018, z * 0.018) * 6 + ruido(x * 0.07, z * 0.07) * 2 + ruido(x * 0.3, z * 0.3) * 0.3;
+  const dx = x - MONTE.x, dz = z - MONTE.z;
+  h += 30 * Math.exp(-(dx * dx) / (2 * 70 * 70) - (dz * dz) / (2 * 26 * 26));
+  const r = Math.hypot(x, z);
+  if (r > 150) h -= (r - 150) * 0.5;
+  return h;
+}
+const altura = (x, z) => alturaNatural(x, z) - cavado(x, z);
+
+const TAM = 360, DIVISIONES = 250;
+let geoTerreno = new THREE.PlaneGeometry(TAM, TAM, DIVISIONES, DIVISIONES);
+geoTerreno.rotateX(-Math.PI / 2);
+const pos = geoTerreno.attributes.position;
+for (let i = 0; i < pos.count; i++) pos.setY(i, altura(pos.getX(i), pos.getZ(i)));
+geoTerreno = geoTerreno.toNonIndexed();   // cada triángulo con sus propios puntos: se ve "facetado" (low poly)
+geoTerreno.computeVertexNormals();
+const colores = [];
+const p = geoTerreno.attributes.position;
+const cTurba = new THREE.Color(0x3b3324), cPasto = new THREE.Color(0x66653a), cRoca = new THREE.Color(0x5a5d63),
+      cArena = new THREE.Color(0x77705a), cBarro = new THREE.Color(0x2a2219), cBrezo = new THREE.Color(0x4a3a3e);
+for (let i = 0; i < p.count; i += 3) {
+  const cx = (p.getX(i) + p.getX(i + 1) + p.getX(i + 2)) / 3, cz = (p.getZ(i) + p.getZ(i + 1) + p.getZ(i + 2)) / 3;
+  const hNat = alturaNatural(cx, cz);
+  let c;
+  if (cavado(cx, cz) > 0.25) c = cBarro.clone();
+  else if (hNat < 1.2) c = cArena.clone();
+  else if (hNat > 27) c = cRoca.clone().lerp(cTurba, ruido(cx * 0.2, cz * 0.2) * 0.4);
+  else c = cPasto.clone().lerp(cTurba, ruido(cx * 0.1, cz * 0.1)).lerp(cBrezo, Math.max(0, ruido(cx * 0.05 + 9, cz * 0.05) - 0.55) * 1.6);
+  c.offsetHSL(0, 0, (azar2D(cx, cz) - 0.5) * 0.05);
+  for (let k = 0; k < 3; k++) colores.push(c.r, c.g, c.b);
+}
+geoTerreno.setAttribute("color", new THREE.Float32BufferAttribute(colores, 3));
+const terreno = new THREE.Mesh(geoTerreno, new THREE.MeshLambertMaterial({ vertexColors: true }));
+escena.add(terreno);
+
+const mar = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600), new THREE.MeshLambertMaterial({ color: 0x0a1a2a }));
+mar.rotation.x = -Math.PI / 2; mar.position.y = 0.4;
+escena.add(mar);
+
+// -------------------------------------------------------------
+// 4. EL HORIZONTE: otros montes recortados contra el cielo y las luces del pueblo
+// (fog:false = la niebla no los borra, así se ven como siluetas)
+// -------------------------------------------------------------
+const matSilueta = new THREE.MeshBasicMaterial({ color: 0x0f1828, fog: false });
+[[-260, 140, 60, 44], [-300, -40, 80, 36], [-230, -230, 70, 50], [140, -300, 90, 40], [300, -120, 70, 30], [260, 180, 100, 26]].forEach(([x, z, r, h], i) => {
+  const monte = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7, 1), matSilueta);
+  monte.position.set(x, h / 2 - 4, z); monte.rotation.y = i; monte.scale.set(1.6, 1, 0.9);
+  escena.add(monte);
+});
+// Puerto Argentino, al este: puntitos de luz cálida
+const lucesPueblo = [];
+for (let i = 0; i < 40; i++) lucesPueblo.push(330 + Math.random() * 40, 2 + Math.random() * 4, -60 + (Math.random() - 0.5) * 90);
+const geoPueblo = new THREE.BufferGeometry(); geoPueblo.setAttribute("position", new THREE.Float32BufferAttribute(lucesPueblo, 3));
+escena.add(new THREE.Points(geoPueblo, new THREE.PointsMaterial({ color: 0xffc27a, size: 1.6, sizeAttenuation: false, fog: false })));
+
+// Estrellas
+const estrellas = [];
+for (let i = 0; i < 1600; i++) {
+  const a = Math.random() * Math.PI * 2, e = Math.random() * 0.45 * Math.PI + 0.06;
+  estrellas.push(Math.cos(a) * Math.cos(e) * 600, Math.sin(e) * 600, Math.sin(a) * Math.cos(e) * 600);
+}
+const geoEstrellas = new THREE.BufferGeometry(); geoEstrellas.setAttribute("position", new THREE.Float32BufferAttribute(estrellas, 3));
+escena.add(new THREE.Points(geoEstrellas, new THREE.PointsMaterial({ color: 0xc9d4ff, size: 1.3, sizeAttenuation: false, fog: false })));
+
+// Aguanieve: miles de puntitos que caen torcidos por el viento del oeste
+const CANT_GOTAS = 2200, CAJA_LLUVIA = { x: 50, y: 26, z: 50 };
+const gotas = new Float32Array(CANT_GOTAS * 3);
+for (let i = 0; i < CANT_GOTAS; i++) { gotas[i * 3] = (Math.random() - 0.5) * CAJA_LLUVIA.x; gotas[i * 3 + 1] = Math.random() * CAJA_LLUVIA.y; gotas[i * 3 + 2] = (Math.random() - 0.5) * CAJA_LLUVIA.z; }
+const geoLluvia = new THREE.BufferGeometry(); geoLluvia.setAttribute("position", new THREE.BufferAttribute(gotas, 3));
+const lluvia = new THREE.Points(geoLluvia, new THREE.PointsMaterial({ color: 0xaab4c8, size: 0.06, transparent: true, opacity: 0.55 }));
+escena.add(lluvia);
+
+// -------------------------------------------------------------
+// 5. BOLSAS DE ARENA, BÚNKER, ROCAS Y PASTO
+// -------------------------------------------------------------
+const ayuda = new THREE.Object3D();
+const bolsas = [];
+function filaDeBolsas(ax, az, bx, bz, capas) {
+  const largo = Math.hypot(bx - ax, bz - az), ang = Math.atan2(bx - ax, bz - az);
+  for (let s = 0; s < largo; s += 0.58) {
+    const x = ax + (bx - ax) * s / largo, z = az + (bz - az) * s / largo;
+    for (let c = 0; c < capas; c++) bolsas.push({ x, z, y: alturaNatural(x, z) + 0.14 + c * 0.26, ang, desfase: c % 2 ? 0.29 : 0 });
+  }
+}
+for (let i = 0; i < TRINCHERA.length - 1; i++) {
+  const [ax, az] = TRINCHERA[i], [bx, bz] = TRINCHERA[i + 1];
+  const l = Math.hypot(bx - ax, bz - az), nx = -(bz - az) / l, nz = (bx - ax) / l, o = ANCHO_TRINCHERA * 0.62;
+  filaDeBolsas(ax + nx * o, az + nz * o, bx + nx * o, bz + nz * o, 2);
+  filaDeBolsas(ax - nx * o, az - nz * o, bx - nx * o, bz - nz * o, 2);
+}
+for (const pz of POZOS) {   // alrededor de cada pozo, con un hueco atrás (al este) para entrar
+  for (let a = -2.4; a < 2.4; a += 0.3) {
+    const x = pz.x + Math.cos(a + Math.PI) * (pz.r + 0.35), z = pz.z + Math.sin(a + Math.PI) * (pz.r + 0.35);
+    for (let c = 0; c < 2; c++) bolsas.push({ x, z, y: alturaNatural(x, z) + 0.14 + c * 0.26, ang: -a, desfase: 0 });
+  }
+}
+const instBolsas = new THREE.InstancedMesh(new THREE.BoxGeometry(0.42, 0.26, 0.56), new THREE.MeshLambertMaterial({ color: 0x7a6a4c }), bolsas.length);
+bolsas.forEach((b, i) => {
+  ayuda.position.set(b.x + Math.sin(b.ang) * b.desfase, b.y, b.z + Math.cos(b.ang) * b.desfase);
+  ayuda.rotation.set(0, b.ang + (azar2D(b.x, b.z) - 0.5) * 0.2, (azar2D(b.z, b.x) - 0.5) * 0.08);
+  ayuda.scale.set(1, 0.9 + azar2D(b.x, 3) * 0.2, 1); ayuda.updateMatrix(); instBolsas.setMatrixAt(i, ayuda.matrix);
+});
+escena.add(instBolsas);
+
+// El búnker: paredes de piedra, techo de chapa con turba encima y una vela adentro
+const obstaculosRect = [];
+let luzVela = null;
+(function armarBunker() {
+  const b = BUNKER, base = alturaNatural(b.x + b.w / 2, b.z + b.d / 2);
+  const grupo = new THREE.Group();
+  const matPiedra = new THREE.MeshLambertMaterial({ color: 0x55585c, flatShading: true });
+  const pared = (x, z, w, d) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 1.6, d), matPiedra); m.position.set(x, base + 0.8, z); grupo.add(m); };
+  pared(b.x + b.w / 2, b.z, b.w, 0.6); pared(b.x, b.z + b.d / 2, 0.6, b.d); pared(b.x + b.w, b.z + b.d / 2, 0.6, b.d);
+  pared(b.x + 1.2, b.z + b.d, 2.4, 0.6); pared(b.x + b.w - 1.2, b.z + b.d, 2.4, 0.6);
+  const lienzoChapa = document.createElement("canvas"); lienzoChapa.width = 64; lienzoChapa.height = 8;
+  const c = lienzoChapa.getContext("2d");
+  for (let x = 0; x < 64; x += 4) { c.fillStyle = x % 8 ? "#5e6a6e" : "#3e4649"; c.fillRect(x, 0, 4, 8); }
+  const tex = new THREE.CanvasTexture(lienzoChapa); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(6, 1);
+  const techo = new THREE.Mesh(new THREE.BoxGeometry(b.w + 0.8, 0.08, b.d + 0.8), new THREE.MeshLambertMaterial({ map: tex }));
+  techo.position.set(b.x + b.w / 2, base + 1.65, b.z + b.d / 2); techo.rotation.z = 0.04; grupo.add(techo);
+  const turba = new THREE.Mesh(new THREE.BoxGeometry(b.w - 1, 0.3, b.d - 1.5), new THREE.MeshLambertMaterial({ color: 0x3b3324, flatShading: true }));
+  turba.position.set(b.x + b.w / 2, base + 1.85, b.z + b.d / 2 - 0.4); grupo.add(turba);
+  const vela = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 4), new THREE.MeshBasicMaterial({ color: 0xffc070 }));
+  vela.position.set(b.x + 2, base + 0.5, b.z + 1.5); grupo.add(vela);
+  luzVela = new THREE.PointLight(0xff9a40, 0.9, 7); luzVela.position.copy(vela.position); grupo.add(luzVela);
+  escena.add(grupo);
+  obstaculosRect.push({ x1: b.x - 0.3, z1: b.z - 0.3, x2: b.x + b.w + 0.3, z2: b.z + b.d + 0.3 });
+})();
+
+// Rocas: muchas en la cresta (como en Longdon), dejando libres trincheras, pozos y caminos
+const rocas = [], mallasRocas = [];
+const matsRoca = [0x686b70, 0x5f6266, 0x72716b].map(c => new THREE.MeshLambertMaterial({ color: c, flatShading: true }));
+function lugarDespejado(x, z, margen) {
+  if (distanciaATrinchera(x, z) < ANCHO_TRINCHERA + margen) return false;
+  if (POZOS.some(p => Math.hypot(x - p.x, z - p.z) < p.r + 2 + margen)) return false;
+  if (x > BUNKER.x - 3 - margen && x < BUNKER.x + BUNKER.w + 3 + margen && z > BUNKER.z - 3 - margen && z < BUNKER.z + BUNKER.d + 4 + margen) return false;
+  if (Math.hypot(x - 62, z + 20) < 8 + margen) return false;
+  return true;
+}
+function ponerRoca(x, z, tam) {
+  if (!lugarDespejado(x, z, tam)) return;
+  const roca = new THREE.Mesh(new THREE.DodecahedronGeometry(tam, 0), matsRoca[Math.floor(azar2D(x, z) * 3)]);
+  roca.position.set(x, alturaNatural(x, z) + tam * 0.3, z);
+  roca.rotation.set(azar2D(x, 1) * 3, azar2D(z, 2) * 3, azar2D(x, z) * 3);
+  roca.scale.set(1, 0.55 + azar2D(z, x) * 0.6, 1);
+  escena.add(roca); mallasRocas.push(roca);
+  rocas.push({ x, z, r: tam * 0.85 });
+}
+for (let i = 0; i < 260; i++) ponerRoca((azar2D(i, 7) - 0.5) * 140, MONTE.z + (azar2D(i, 9) - 0.5) * 46, 0.8 + azar2D(i, 11) * 2.6);
+for (let i = 0; i < 90; i++) {
+  const x = (azar2D(i, 21) - 0.5) * 280, z = (azar2D(i, 23) - 0.5) * 280;
+  if (Math.hypot(x, z) < 140) ponerRoca(x, z, 0.4 + azar2D(i, 25) * 1.4);
+}
+// Más piedras en la ladera oeste: por ahí suben los atacantes y se cubren
+for (let i = 0; i < 70; i++) ponerRoca(-60 - azar2D(i, 41) * 60, -55 + azar2D(i, 43) * 90, 0.7 + azar2D(i, 45) * 1.6);
+
+// Matas de pasto "tussock"
+const CANT_PASTO = 1300;
+const pastos = new THREE.InstancedMesh(new THREE.ConeGeometry(0.35, 0.9, 5), new THREE.MeshLambertMaterial({ color: 0x8a8448 }), CANT_PASTO);
+for (let i = 0; i < CANT_PASTO; i++) {
+  const x = (azar2D(i, 31) - 0.5) * 280, z = (azar2D(i, 33) - 0.5) * 280;
+  const h = alturaNatural(x, z);
+  if (h < 1.5 || h > 26 || !lugarDespejado(x, z, 0)) ayuda.position.set(0, -50, 0);
+  else { ayuda.position.set(x, h + 0.35, z); ayuda.scale.setScalar(0.6 + azar2D(i, 35) * 0.9); ayuda.rotation.set(0, azar2D(i, 37) * 3, 0); }
+  ayuda.updateMatrix(); pastos.setMatrixAt(i, ayuda.matrix);
+}
+escena.add(pastos);
+
+// -------------------------------------------------------------
+// 6. LOS SOLDADOS
+// Cada soldado es un "grupo" de cajitas y esferas: botas, piernas, campera,
+// correaje, mochila, brazos sosteniendo el fusil, cara y casco.
+// Los argentinos y los británicos tienen distinto uniforme y casco.
+// -------------------------------------------------------------
+function texturaCamuflaje(base, manchas) {
+  const lienzoCamo = document.createElement("canvas"); lienzoCamo.width = lienzoCamo.height = 64;
+  const c = lienzoCamo.getContext("2d");
+  c.fillStyle = base; c.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 26; i++) {
+    c.fillStyle = manchas[i % manchas.length];
+    c.beginPath(); c.ellipse(Math.random() * 64, Math.random() * 64, 4 + Math.random() * 9, 2 + Math.random() * 5, Math.random() * 3, 0, Math.PI * 2); c.fill();
+  }
+  const t = new THREE.CanvasTexture(lienzoCamo); t.magFilter = THREE.NearestFilter; return t;
+}
+const mat = (o) => new THREE.MeshLambertMaterial(Object.assign({ flatShading: true }, o));
+const UNIFORMES = {
+  argentino: { campera: mat({ color: 0x4a5030 }), pantalon: mat({ color: 0x40452b }), casco: mat({ color: 0x353a26 }), mochila: mat({ color: 0x3b3f2a }), bufanda: mat({ color: 0x5a5244 }) },
+  britanico: { campera: mat({ map: texturaCamuflaje("#5d5b3e", ["#3b3a27", "#6d5a3b", "#2c3224"]) }), pantalon: mat({ map: texturaCamuflaje("#55573b", ["#3a3a28", "#6a583a"]) }),
+               casco: mat({ color: 0x3e4030 }), mochila: mat({ color: 0x4a4632 }), bufanda: mat({ color: 0x3a3a2c }) }
+};
+const matPiel = mat({ color: 0xa8846a }), matBota = mat({ color: 0x1e1c19 }), matCorreaje = mat({ color: 0x2e2f22 }),
+      matFusil = mat({ color: 0x23262a }), matMaderaFusil = mat({ color: 0x4a3524 });
+
+function armarSoldado(bando, agachado) {
+  const u = UNIFORMES[bando], g = new THREE.Group();
+  const pieza = (padre, geo, material, x, y, z, rx = 0, ry = 0, rz = 0) => {
+    const m = new THREE.Mesh(geo, material); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); padre.add(m); return m;
+  };
+  const caja = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+  const cadera = agachado ? 0.52 : 0.92;
+  // Piernas
+  for (const lado of [-1, 1]) {
+    if (agachado) {
+      pieza(g, caja(0.17, 0.17, 0.46), u.pantalon, lado * 0.11, cadera - 0.04, 0.18);       // muslo hacia adelante
+      pieza(g, caja(0.16, 0.44, 0.17), u.pantalon, lado * 0.11, 0.26, 0.4);                  // canilla
+      pieza(g, caja(0.18, 0.12, 0.3), matBota, lado * 0.11, 0.06, 0.46);
+    } else {
+      pieza(g, caja(0.17, 0.46, 0.18), u.pantalon, lado * 0.11, 0.66, 0);
+      pieza(g, caja(0.16, 0.4, 0.17), u.pantalon, lado * 0.11, 0.27, 0.01);
+      pieza(g, caja(0.18, 0.13, 0.3), matBota, lado * 0.11, 0.065, 0.05);
+    }
+  }
+  // Tronco con campera, cinturón, correaje y mochila
+  const torso = new THREE.Group(); torso.position.y = cadera; g.add(torso);
+  if (agachado) torso.rotation.x = 0.25;   // inclinado hacia adelante
+  pieza(torso, caja(0.5, 0.62, 0.3), u.campera, 0, 0.31, 0);
+  pieza(torso, caja(0.52, 0.18, 0.32), u.campera, 0, 0.05, 0.01);             // faldón de la campera
+  pieza(torso, caja(0.53, 0.06, 0.33), matCorreaje, 0, 0.14, 0);              // cinturón
+  pieza(torso, caja(0.06, 0.55, 0.32), matCorreaje, -0.14, 0.38, 0.005);      // tiradores del correaje
+  pieza(torso, caja(0.06, 0.55, 0.32), matCorreaje, 0.14, 0.38, 0.005);
+  pieza(torso, caja(0.12, 0.1, 0.08), matCorreaje, -0.17, 0.16, 0.17);        // cartucheras
+  pieza(torso, caja(0.12, 0.1, 0.08), matCorreaje, 0.17, 0.16, 0.17);
+  pieza(torso, caja(0.38, 0.42, 0.2), u.mochila, 0, 0.4, -0.25);
+  pieza(torso, caja(0.4, 0.1, 0.1), u.bufanda, 0, 0.6, -0.28);                // bolsa de dormir arriba de la mochila
+  pieza(torso, caja(0.32, 0.1, 0.28), u.bufanda, 0, 0.64, 0.01);              // cuello / bufanda
+  // Brazos sosteniendo el fusil cruzado adelante
+  pieza(torso, caja(0.13, 0.32, 0.14), u.campera, -0.31, 0.44, 0.03, -0.35);
+  pieza(torso, caja(0.13, 0.32, 0.14), u.campera, 0.31, 0.44, 0.03, -0.5);
+  pieza(torso, caja(0.12, 0.3, 0.12), u.campera, -0.24, 0.27, 0.22, -1.25, 0, -0.35);
+  pieza(torso, caja(0.12, 0.3, 0.12), u.campera, 0.24, 0.3, 0.2, -1.1, 0, 0.3);
+  pieza(torso, new THREE.SphereGeometry(0.055, 6, 4), matPiel, -0.12, 0.22, 0.36);
+  pieza(torso, new THREE.SphereGeometry(0.055, 6, 4), matPiel, 0.15, 0.3, 0.32);
+  const fusilSoldado = new THREE.Group(); fusilSoldado.position.set(0.02, 0.27, 0.34); fusilSoldado.rotation.set(-0.2, 0, 0.55); torso.add(fusilSoldado);
+  pieza(fusilSoldado, caja(0.05, 0.07, 0.62), matFusil, 0, 0, -0.05);
+  pieza(fusilSoldado, caja(0.05, 0.08, 0.28), matMaderaFusil, 0, -0.02, 0.38);
+  pieza(fusilSoldado, caja(0.04, 0.14, 0.06), matFusil, 0, -0.1, -0.02);
+  // Cabeza: cara con nariz y casco (el argentino con ala, el británico más redondo)
+  const cabeza = new THREE.Group(); cabeza.position.set(0, 0.82, 0.02); torso.add(cabeza);
+  pieza(cabeza, new THREE.SphereGeometry(0.12, 8, 6), matPiel, 0, 0, 0);
+  pieza(cabeza, caja(0.04, 0.05, 0.05), matPiel, 0, -0.01, 0.12);
+  pieza(cabeza, caja(0.11, 0.025, 0.02), mat({ color: 0x2a2420 }), 0, 0.03, 0.115);   // cejas / sombra de los ojos
+  if (bando === "argentino") {
+    pieza(cabeza, new THREE.SphereGeometry(0.155, 9, 5, 0, Math.PI * 2, 0, Math.PI / 2), u.casco, 0, 0.03, 0);
+    pieza(cabeza, new THREE.CylinderGeometry(0.175, 0.175, 0.02, 10), u.casco, 0, 0.03, 0.005);
+  } else {
+    const c = pieza(cabeza, new THREE.SphereGeometry(0.165, 9, 6, 0, Math.PI * 2, 0, Math.PI * 0.58), u.casco, 0, 0.0, 0);
+    c.scale.set(1, 0.95, 1.08);
+    pieza(cabeza, caja(0.3, 0.02, 0.06), matCorreaje, 0, 0.02, 0.13).rotation.x = 0.2;   // borde del casco con red
+  }
+  g.userData = { torso, cabeza, baseY: cadera };
+  return g;
+}
+
+// Vapor de la respiración: bolitas blancas que suben y se desvanecen (por el frío)
+const vapores = [];
+const matVapor = new THREE.MeshBasicMaterial({ color: 0xdfe6ee, transparent: true, opacity: 0, depthWrite: false });
+for (let i = 0; i < 24; i++) { const v = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 4), matVapor.clone()); v.visible = false; escena.add(v); vapores.push({ m: v, vida: 0 }); }
+function soplarVapor(posicion) {
+  const v = vapores.find(x => x.vida <= 0);
+  if (!v) return;
+  v.vida = 1.4; v.m.position.copy(posicion); v.m.visible = true; v.m.scale.setScalar(1);
+}
+
+// -------------------------------------------------------------
+// 7. PERSONAJES DEL PELOTÓN (los que te hablan)
+// -------------------------------------------------------------
+const personajes = {};
+function ponerPersonaje(id, nombre, x, z, agachado, mira) {
+  const g = armarSoldado("argentino", agachado);
+  g.position.set(x, altura(x, z), z);
+  g.rotation.y = mira;
+  escena.add(g);
+  personajes[id] = { id, nombre, grupo: g, x, z, agachado, proximoVapor: Math.random() * 3, proximoTiro: 2 + Math.random() * 3 };
+}
+function sacarPersonajes() {
+  for (const id in personajes) { escena.remove(personajes[id].grupo); delete personajes[id]; }
+}
+const NOMBRES = { sargento: "Sargento Medina", cabo: "Cabo Ríos", flaco: "Soldado Ferreyra, \"el Flaco\"", correntino: "Soldado Benítez, \"el Correntino\"" };
+
+// -------------------------------------------------------------
+// 8. LAS LATAS (Misión 1): arriba de cajones de munición
+// -------------------------------------------------------------
+const matCajon = mat({ color: 0x4e5a3a });
+const latas = [], blancosLatas = [];
+[[-64, -30], [-70, -20], [-66, -10], [-76, -26], [-80, -14]].forEach(([x, z]) => {
+  const y = altura(x, z);
+  const cajon = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.45, 0.4), matCajon);
+  cajon.position.set(x, y + 0.22, z); cajon.rotation.y = azar2D(x, z) * 2; escena.add(cajon);
+  const lata = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.2, 10), new THREE.MeshLambertMaterial({ color: 0xb8b2a2 }));
+  lata.position.set(x, y + 0.55, z); escena.add(lata);
+  const zona = new THREE.Mesh(new THREE.SphereGeometry(0.35, 6, 4), new THREE.MeshBasicMaterial({ visible: false }));
+  zona.position.copy(lata.position); escena.add(zona);
+  const datos = { lata, zona, inicio: lata.position.clone(), volando: false, vel: new THREE.Vector3(), giro: new THREE.Vector3() };
+  zona.userData.lata = datos;
+  latas.push(datos); blancosLatas.push(zona);
+});
+// El cajón de munición en tu pozo (Misión 3): con E recargás tu reserva
+const cajonPozo = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 0.4), matCajon);
+cajonPozo.position.set(MI_POZO.x + 0.9, altura(MI_POZO.x + 0.9, MI_POZO.z - 0.6) + 0.2, MI_POZO.z - 0.6);
+escena.add(cajonPozo);
+
+// -------------------------------------------------------------
+// 9. TU FUSIL: un FAL hecho con cajitas, pegado a la cámara
+// -------------------------------------------------------------
+const fusil = new THREE.Group();
+function cajaFusil(w, h, d, material, x, y, z) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material); m.position.set(x, y, z); fusil.add(m); return m; }
+cajaFusil(0.07, 0.09, 0.55, matFusil, 0, 0, 0);
+cajaFusil(0.03, 0.03, 0.45, matFusil, 0, 0.02, -0.48);
+cajaFusil(0.045, 0.045, 0.06, matFusil, 0, 0.02, -0.72);       // apagallamas
+cajaFusil(0.06, 0.05, 0.25, matMaderaFusil, 0, -0.01, -0.28);
+cajaFusil(0.06, 0.16, 0.08, matFusil, 0, -0.12, -0.05);
+cajaFusil(0.05, 0.12, 0.05, matMaderaFusil, 0, -0.09, 0.15);
+cajaFusil(0.06, 0.1, 0.3, matMaderaFusil, 0, -0.03, 0.4);
+cajaFusil(0.015, 0.04, 0.02, matFusil, 0, 0.07, -0.66);
+cajaFusil(0.02, 0.03, 0.04, matFusil, 0, 0.065, 0.12);          // alza
+cajaFusil(0.03, 0.02, 0.12, matFusil, 0.045, 0.03, -0.02);      // palanca de carga
+const manoIzq = cajaFusil(0.07, 0.06, 0.1, mat({ color: 0x3c4129 }), 0, -0.05, -0.3);   // guante sosteniendo el guardamanos
+const fogonazo = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 4), new THREE.MeshBasicMaterial({ color: 0xffd28a }));
+fogonazo.position.set(0, 0.02, -0.78); fogonazo.visible = false; fusil.add(fogonazo);
+const POSICION_FUSIL = new THREE.Vector3(0.22, -0.22, -0.45);
+fusil.position.copy(POSICION_FUSIL);
+camara.add(fusil);
+
+// -------------------------------------------------------------
+// 10. LUCES QUE SE PRENDEN Y APAGAN
+// Creamos pocas luces al principio y las reusamos: crear luces nuevas
+// a cada rato haría que el juego se trabe recalculando todo.
+// -------------------------------------------------------------
+const luzDisparo = new THREE.PointLight(0xffc27a, 0, 18);
+camara.add(luzDisparo); luzDisparo.position.set(0.2, 0, -1);
+const luzLejana = new THREE.PointLight(0xff9a5a, 0, 420);
+escena.add(luzLejana);
+const luzExplosion = new THREE.PointLight(0xffa060, 0, 70);
+escena.add(luzExplosion);
+const lucesFogonazo = [];   // fogonazos de los fusiles enemigos y aliados
+for (let i = 0; i < 3; i++) { const l = new THREE.PointLight(0xffc27a, 0, 22); escena.add(l); lucesFogonazo.push(l); }
+let turnoFogonazo = 0;
+function fogonazoEn(posicion) {
+  const l = lucesFogonazo[turnoFogonazo++ % lucesFogonazo.length];
+  l.position.copy(posicion); l.intensity = 2.2;
+}
+const bengalas = [];
+for (let i = 0; i < 4; i++) {
+  const luz = new THREE.PointLight(0xffe2b0, 0, 150, 1.4);
+  const bola = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff1d0, fog: false }));
+  bola.visible = false;
+  escena.add(luz, bola);
+  bengalas.push({ luz, bola, activa: false, vel: new THREE.Vector3(), edad: 0, mia: false });
+}
+function lanzarBengala(desde, velocidad, mia) {
+  const b = bengalas.find(x => !x.activa);
+  if (!b) return false;
+  b.activa = true; b.edad = 0; b.mia = mia;
+  b.bola.position.copy(desde); b.vel.copy(velocidad); b.bola.visible = true;
+  return true;
+}
+
+// Trazadoras: líneas de luz que dejan las balas (rojas las británicas, naranjas las argentinas)
+const trazadoras = [];
+for (let i = 0; i < 24; i++) {
+  const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
+  const linea = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xff5a3c, transparent: true, opacity: 0, fog: false }));
+  escena.add(linea); trazadoras.push({ linea, vida: 0 });
+}
+function trazadora(desde, hasta, color) {
+  const t = trazadoras.find(x => x.vida <= 0) || trazadoras[0];
+  const a = t.linea.geometry.attributes.position;
+  // Solo un pedazo de la línea, cerca del final, como una bala que pasa
+  const inicio = desde.clone().lerp(hasta, 0.35 + Math.random() * 0.3);
+  a.setXYZ(0, inicio.x, inicio.y, inicio.z); a.setXYZ(1, hasta.x, hasta.y, hasta.z); a.needsUpdate = true;
+  t.linea.material.color.setHex(color); t.vida = 0.09;
+}
+
+// Explosiones de artillería: destello, tierra que vuela y temblor si cae cerca
+const terrones = [];
+for (let i = 0; i < 4; i++) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(1, 7, 5), new THREE.MeshBasicMaterial({ color: 0x3a2e20, transparent: true, opacity: 0 }));
+  m.visible = false; escena.add(m); terrones.push({ m, vida: 0 });
+}
+let temblor = 0;
+
+// -------------------------------------------------------------
+// 11. SONIDOS (fabricados con la Web Audio API, sin archivos)
+// -------------------------------------------------------------
+let audio = null, ruidoBlanco = null, gananciaViento = null;
+function prepararAudio() {
+  if (audio) return;
+  try {
+    audio = new (window.AudioContext || window.webkitAudioContext)();
+    ruidoBlanco = audio.createBuffer(1, audio.sampleRate * 2, audio.sampleRate);
+    const datos = ruidoBlanco.getChannelData(0);
+    for (let i = 0; i < datos.length; i++) datos[i] = Math.random() * 2 - 1;
+    const viento = audio.createBufferSource(); viento.buffer = ruidoBlanco; viento.loop = true;
+    const filtro = audio.createBiquadFilter(); filtro.type = "lowpass"; filtro.frequency.value = 380;
+    gananciaViento = audio.createGain(); gananciaViento.gain.value = 0.07;
+    viento.connect(filtro).connect(gananciaViento).connect(audio.destination); viento.start();
+  } catch (e) { audio = null; }
+}
+function estallido(duracion, frecuencia, volumen, tipo = "lowpass") {
+  if (!audio) return;
+  const t = audio.currentTime;
+  const fuente = audio.createBufferSource(); fuente.buffer = ruidoBlanco;
+  const filtro = audio.createBiquadFilter(); filtro.type = tipo; filtro.frequency.value = frecuencia;
+  const g = audio.createGain(); g.gain.setValueAtTime(Math.max(0.001, volumen), t); g.gain.exponentialRampToValueAtTime(0.001, t + duracion);
+  fuente.connect(filtro).connect(g).connect(audio.destination);
+  fuente.start(t, Math.random()); fuente.stop(t + duracion);
+}
+const volumenPorDistancia = d => Math.max(0.03, 1 - d / 140);
+const sonidoDisparo = () => { estallido(0.25, 2200, 0.55); estallido(0.6, 180, 0.35); };
+const sonidoDisparoLejano = d => { const v = volumenPorDistancia(d); estallido(0.18, 1400, 0.3 * v); estallido(0.5, 160, 0.25 * v); };
+const sonidoBengala = () => estallido(0.9, 900, 0.18, "bandpass");
+const sonidoArtilleria = d => estallido(2.2, 110, Math.max(0.08, 0.5 - d / 900));
+const sonidoExplosionCerca = d => { estallido(1.6, 90, 0.9 * volumenPorDistancia(d)); estallido(0.4, 1200, 0.4 * volumenPorDistancia(d)); };
+const sonidoRecarga = () => { estallido(0.08, 3000, 0.2, "highpass"); setTimeout(() => estallido(0.1, 2500, 0.25, "highpass"), 700); };
+const sonidoLata = () => estallido(0.15, 5000, 0.18, "highpass");
+const sonidoSilbidoBala = () => estallido(0.12, 6000, 0.12, "bandpass");
+const sonidoImpacto = () => { estallido(0.15, 300, 0.5); estallido(0.08, 3000, 0.2, "highpass"); };
+
+// -------------------------------------------------------------
+// 12. TEXTOS DE LAS MISIONES
+// -------------------------------------------------------------
+const MISIONES = {
+  1: {
+    lugar: "Monte Longdon, Islas Malvinas · 8 de junio de 1982",
+    titulo: "Misión 1: Primera Noche",
+    linea1: "Tenés 18 años. Te mandaron a reforzar las posiciones de la cresta de Monte Longdon, a pocos kilómetros de Puerto Argentino.",
+    linea2: "Hace semanas que el frío no afloja y el viento no para nunca. Esta noche conocés a los que van a estar a tu lado."
+  },
+  3: {
+    lugar: "Monte Longdon · 11 de junio de 1982, 20:30",
+    titulo: "Misión 3: La noche del 11",
+    linea1: "La artillería no paró en todo el día. Ahora, de golpe, hay un silencio raro.",
+    linea2: "El Flaco te toca el hombro: hay movimiento abajo, en el campo minado. Las minas no explotan. Con este frío, están congeladas."
+  }
+};
+const DIALOGOS = {
+  sargento: [
+    "¿Vos sos el nuevo? Bienvenido a Longdon, soldado.",
+    "Los ingleses están para el oeste. De noche patrullan cerca, así que nada de fuego ni de linternas.",
+    "Ahora que su artillería está tirando, nadie va a escuchar un par de tiros. Bajá por la ladera oeste y probá el fusil con las latas.",
+    "Con este frío el FAL se traba si no lo cuidás. Después andá a tu pozo: te está esperando el Flaco."
+  ],
+  cabo: [
+    "Agachate cuando camines por la trinchera, pibe. Si te asomás la cabeza, desde abajo te la vuelan.",
+    "En el pozo es igual: agachado no te ven, pero tampoco ves. Para tirar, te tenés que asomar.",
+    "Y comé lo que te den, aunque esté frío. Acá arriba el hambre es peor que el viento."
+  ],
+  flaco: [
+    "¡Llegaste! Te guardé lugar. Es chiquito, pero entre los dos no se siente tanto el frío.",
+    "Mi vieja me mandó una carta. Dice que en el barrio piensan que estamos ganando.",
+    "Hacé vos la primera guardia, que yo cierro los ojos un rato. Mirá para el oeste. Cualquier cosa rara, tirá una bengala."
+  ]
+};
+const PASOS_M1 = [
+  { texto: "Presentate con el sargento, en el búnker de la cresta", destino: () => personajes.sargento, hablar: "sargento" },
+  { texto: "Bajá por la ladera oeste y probá el fusil con las latas", destino: () => latas.find(l => !l.volando)?.lata.position, latas: true },
+  { texto: "Andá a tu pozo, con el Flaco", destino: () => personajes.flaco, hablar: "flaco" },
+  { texto: "Hacé la guardia desde tu pozo. Mirá hacia el oeste", destino: () => MI_POZO, guardia: 60 }
+];
+const GRITOS_ALIADOS = [
+  "Flaco: \"¡Ahí vienen, entre las piedras de abajo!\"",
+  "Cabo Ríos: \"¡Tiren una bengala, no se ve nada!\"",
+  "Flaco: \"¡Recargo! ¡Cubrime!\"",
+  "Correntino: \"¡Por la izquierda, por la izquierda!\"",
+  "Cabo Ríos: \"¡Agachen la cabeza entre ráfaga y ráfaga!\"",
+  "Flaco: \"¡Le di a uno! ¡Creo que le di!\""
+];
+
+// -------------------------------------------------------------
+// 13. TU ESTADO
+// -------------------------------------------------------------
+const INICIO_M1 = { x: 62, z: -20, giro: Math.PI / 2 };
+const jugador = { x: 0, z: 0, giro: 0, cabeceo: 0, paso: 0, agachado: false, alturaOjos: 1.65, vida: 100, ultimoDano: 0 };
+let mision = 0, jugando = false, pausado = false, inicioPartida = 0;
+let balas = 20, reserva = 60, recargando = false, misBengalas = 4, disparos = 0, aciertos = 0;
+let paso = 0, guardiaHecha = 0, latasCaidas = 0, dialogo = null;
+let escribiendoAhora = null;   // el texto que se está "tipeando" ahora (diálogos e intro)
+const teclas = {};
+
+function actualizarHud() {
+  const elBalas = document.getElementById("balas");
+  elBalas.textContent = recargando ? "Recargando…" : `${balas} / ${reserva}`;
+  elBalas.classList.toggle("poca", balas <= 5 && !recargando);
+  document.getElementById("bengalas").textContent = `Bengalas: ${misBengalas}`;
+  const cubierto = jugador.agachado && cavado(jugador.x, jugador.z) > 0.5;
+  const postura = document.getElementById("postura");
+  postura.textContent = cubierto ? "Agachado · cubierto" : jugador.agachado ? "Agachado" : "De pie";
+  postura.classList.toggle("cubierto", cubierto);
+  if (mision === 1) {
+    document.getElementById("texto-objetivo").textContent = textoObjetivoM1();
+    document.getElementById("extra-objetivo").textContent = "";
+  } else if (mision === 3) {
+    document.getElementById("texto-objetivo").textContent = combate.objetivo;
+    document.getElementById("extra-objetivo").textContent = combate.fase === "repliegue" ? "" :
+      `Oleada ${Math.min(combate.oleada + 1, OLEADAS.length)} de ${OLEADAS.length} · Enemigos: ${enemigos.filter(e => e.vivo).length + combate.porAparecer}`;
+  }
+}
+let relojMensaje = null, relojGrito = null;
+function mostrarMensaje(texto, ms = 3500) {
+  const el = document.getElementById("mensaje");
+  el.textContent = texto; clearTimeout(relojMensaje);
+  relojMensaje = setTimeout(() => { el.textContent = ""; }, ms);
+}
+function gritar(texto, ms = 2600) {
+  const el = document.getElementById("grito");
+  el.textContent = texto; clearTimeout(relojGrito);
+  relojGrito = setTimeout(() => { el.textContent = ""; }, ms);
+}
+
+// -------------------------------------------------------------
+// 14. CONTROLES
+// "Pointer lock" esconde el cursor y te deja girar sin límite, como en cualquier juego de disparos.
+// -------------------------------------------------------------
+const lienzo = renderer.domElement;
+let mouseApretado = false, bloqueoFunciona = false;
+function capturarMouse() {
+  try { const r = lienzo.requestPointerLock && lienzo.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {}
+}
+const mouseCapturado = () => document.pointerLockElement === lienzo;
+document.addEventListener("pointerlockchange", () => {
+  if (mouseCapturado()) bloqueoFunciona = true;
+  // Si el mouse se suelta (Esc), el juego se pausa. Si este navegador no deja capturarlo, se juega arrastrando.
+  pausado = jugando && bloqueoFunciona && !mouseCapturado();
+  document.getElementById("pausa").hidden = !pausado;
+});
+lienzo.addEventListener("mousedown", e => {
+  if (!jugando) return;
+  mouseApretado = true;
+  if (!mouseCapturado()) { capturarMouse(); if (bloqueoFunciona) return; }
+  if (dialogo) { seguirDialogo(); return; }
+  if (e.button === 0) disparar();
+});
+addEventListener("mouseup", () => { mouseApretado = false; });
+addEventListener("mousemove", e => {
+  if (!jugando || pausado || (!mouseCapturado() && !mouseApretado)) return;
+  jugador.giro -= e.movementX * 0.0022;
+  jugador.cabeceo = Math.max(-1.35, Math.min(1.35, jugador.cabeceo - e.movementY * 0.0022));
+});
+addEventListener("keydown", e => {
+  teclas[e.code] = true;
+  if (!jugando || pausado || e.repeat) return;
+  if (e.code === "KeyE") {
+    if (dialogo) seguirDialogo();
+    else if (cercano && cercano.tipo === "hablar") empezarDialogo(cercano.id);
+    else if (cercano && cercano.tipo === "municion") { reserva = 140; misBengalas = Math.max(misBengalas, 3); sonidoRecarga(); mostrarMensaje("Tomaste munición y bengalas del cajón."); actualizarHud(); }
+  }
+  if (dialogo) return;
+  if (e.code === "KeyR") recargar();
+  if (e.code === "KeyF") tirarBengala();
+  if (e.code === "KeyC") { jugador.agachado = !jugador.agachado; actualizarHud(); }
+});
+addEventListener("keyup", e => { teclas[e.code] = false; });
+addEventListener("blur", () => { for (const k in teclas) teclas[k] = false; });
+
+// -------------------------------------------------------------
+// 15. DISPARAR, RECARGAR, BENGALA
+// -------------------------------------------------------------
+const rayo = new THREE.Raycaster();
+let retroceso = 0;
+function disparar() {
+  if (recargando) return;
+  if (balas <= 0) { mostrarMensaje("Sin balas. Apretá R para recargar."); estallido(0.05, 4000, 0.15, "highpass"); return; }
+  balas--; disparos++;
+  sonidoDisparo();
+  retroceso = 1;
+  fogonazo.visible = true; luzDisparo.intensity = 3;
+  setTimeout(() => { fogonazo.visible = false; luzDisparo.intensity = 0; }, 50);
+  jugador.cabeceo = Math.min(1.35, jugador.cabeceo + (jugador.agachado ? 0.006 : 0.012));   // agachado, el fusil patea menos
+
+  // Un rayo invisible sale del centro de la pantalla. Se fija qué toca PRIMERO:
+  // si antes de un enemigo hay una roca, una bolsa de arena o el suelo, la bala se queda ahí.
+  rayo.setFromCamera({ x: 0, y: 0 }, camara);
+  rayo.far = 160;
+  const objetivos = mision === 1 ? blancosLatas : enemigos.filter(e => e.vivo).map(e => e.hitbox);
+  const choques = rayo.intersectObjects(objetivos.concat(mallasRocas, [instBolsas, terreno]), false);
+  // Desde adentro del pozo, las bolsas pegadas a tu cara no te tapan el tiro
+  const primero = choques.find(c => !(c.object === instBolsas && c.distance < 2.6));
+  if (!primero) { actualizarHud(); return; }
+  const lata = primero.object.userData.lata, enemigo = primero.object.userData.enemigo;
+  if (lata && !lata.volando) {
+    lata.volando = true; latasCaidas++; sonidoLata();
+    const dir = rayo.ray.direction;
+    lata.vel.set(dir.x * 6, 4 + Math.random() * 2, dir.z * 6);
+    lata.giro.set(Math.random() * 12, Math.random() * 12, Math.random() * 12);
+    if (PASOS_M1[paso] && PASOS_M1[paso].latas) {
+      if (latasCaidas >= latas.length) setTimeout(avanzarPasoM1, 600);
+      else mostrarMensaje(`¡Le diste! Quedan ${latas.length - latasCaidas}.`);
+    }
+  }
+  if (enemigo && enemigo.vivo) {
+    aciertos++;
+    matarEnemigo(enemigo);
+    const mira = document.getElementById("mira");
+    mira.classList.add("acierto"); setTimeout(() => mira.classList.remove("acierto"), 150);
+  }
+  actualizarHud();
+}
+function recargar() {
+  if (recargando || balas === 20 || reserva === 0) return;
+  recargando = true; sonidoRecarga(); actualizarHud();
+  setTimeout(() => {
+    const pongo = Math.min(20 - balas, reserva);
+    balas += pongo; reserva -= pongo; recargando = false; actualizarHud();
+  }, 1600);
+}
+function tirarBengala() {
+  if (misBengalas <= 0) { mostrarMensaje("No te quedan bengalas."); return; }
+  const mira = new THREE.Vector3(); camara.getWorldDirection(mira);
+  const desde = camara.position.clone().add(mira.clone().multiplyScalar(1));
+  if (lanzarBengala(desde, new THREE.Vector3(mira.x * 8, 26, mira.z * 8), true)) { misBengalas--; sonidoBengala(); actualizarHud(); }
+}
+
+// -------------------------------------------------------------
+// 16. LOS ENEMIGOS (Misión 3)
+// Cada enemigo tiene una pequeña "máquina de estados": en cada momento está
+// en UN estado (avanzar, cubierto, disparar o caído) y cambia según lo que pasa.
+// -------------------------------------------------------------
+const OLEADAS = [5, 7, 9];
+const enemigos = [];
+const matHitbox = new THREE.MeshBasicMaterial({ visible: false });
+const rocasDeCobertura = () => rocas.filter(r => r.r > 0.7);
+
+function crearEnemigo() {
+  const grupo = new THREE.Group();
+  const dePie = armarSoldado("britanico", false), agachado = armarSoldado("britanico", true);
+  agachado.visible = false;
+  grupo.add(dePie, agachado);
+  const hitbox = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.6), matHitbox);
+  hitbox.position.y = 0.9; grupo.add(hitbox);
+  const x = -125 + Math.random() * 18, z = -55 + Math.random() * 80;
+  grupo.position.set(x, altura(x, z), z);
+  escena.add(grupo);
+  const e = { grupo, dePie, agachado, hitbox, x, z, vivo: true, estado: "avanzar", espera: 0, meta: null, objetivo: null,
+              rafaga: 0, proximoTiro: 0, caida: 0, agachadoAhora: false };
+  hitbox.userData.enemigo = e;
+  elegirObjetivo(e); elegirCobertura(e);
+  enemigos.push(e);
+  return e;
+}
+function ponerPostura(e, agachado) {
+  e.agachadoAhora = agachado;
+  e.dePie.visible = !agachado; e.agachado.visible = agachado;
+  e.hitbox.scale.y = agachado ? 0.62 : 1; e.hitbox.position.y = agachado ? 0.56 : 0.9;
+}
+// ¿A quién van a buscar? Al jugador o a alguno de los otros pozos
+function elegirObjetivo(e) {
+  if (combate.fase === "repliegue" || Math.random() < 0.55) e.objetivo = "jugador";
+  else e.objetivo = POZOS[1 + Math.floor(Math.random() * 2)];
+}
+function posicionObjetivo(e) { return e.objetivo === "jugador" ? jugador : e.objetivo; }
+// Buscan una roca más cerca de su objetivo y se ponen DETRÁS de ella (del lado opuesto al objetivo)
+function elegirCobertura(e) {
+  const o = posicionObjetivo(e), dActual = Math.hypot(o.x - e.x, o.z - e.z);
+  if (dActual < 16) { e.meta = { x: o.x + (Math.random() - 0.5) * 3, z: o.z + (Math.random() - 0.5) * 3 }; return; }   // carga final
+  const opciones = rocasDeCobertura().filter(r => {
+    const dRoca = Math.hypot(o.x - r.x, o.z - r.z), dDesdeMi = Math.hypot(r.x - e.x, r.z - e.z);
+    return dRoca < dActual - 4 && dDesdeMi > 5 && dDesdeMi < 24;
+  }).sort((a, b) => Math.hypot(a.x - e.x, a.z - e.z) - Math.hypot(b.x - e.x, b.z - e.z)).slice(0, 5);
+  if (!opciones.length) { const f = 10 / dActual; e.meta = { x: e.x + (o.x - e.x) * f, z: e.z + (o.z - e.z) * f }; return; }
+  const r = opciones[Math.floor(Math.random() * opciones.length)];
+  const dx = r.x - o.x, dz = r.z - o.z, d = Math.hypot(dx, dz);
+  e.meta = { x: r.x + dx / d * (r.r + 0.7), z: r.z + dz / d * (r.r + 0.7) };
+}
+function empujarFueraDeObstaculos(x, z, radio) {
+  for (const r of rocas) {
+    const dx = x - r.x, dz = z - r.z, d = Math.hypot(dx, dz), min = r.r + radio;
+    if (d < min && d > 0.001) { x = r.x + dx / d * min; z = r.z + dz / d * min; }
+  }
+  for (const o of obstaculosRect) {
+    if (x > o.x1 && x < o.x2 && z > o.z1 && z < o.z2) {
+      const salidas = [[x - o.x1, o.x1, z], [o.x2 - x, o.x2, z], [z - o.z1, x, o.z1], [o.z2 - z, x, o.z2]].sort((a, b) => a[0] - b[0]);
+      x = salidas[0][1]; z = salidas[0][2];
+    }
+  }
+  return [x, z];
+}
+// ¿Qué tan fácil es pegarte? Depende de la distancia, de si estás agachado y de si estás en un pozo
+function probabilidadDeImpacto(d) {
+  let p = 0.2 * Math.max(0.15, 1 - d / 110);
+  const enPozo = cavado(jugador.x, jugador.z) > 0.5;
+  if (jugador.agachado && enPozo) p *= 0.04;          // agachado en el pozo: casi imposible
+  else if (jugador.agachado) p *= 0.45;
+  else if (enPozo) p *= 0.55;                          // asomado del pozo: solo se ve la cabeza
+  if (d < 6) p = Math.max(p, 0.5);                     // cuerpo a cuerpo: ya no hay dónde esconderse
+  return p;
+}
+function pensarEnemigo(e, dt) {
+  if (!e.vivo) {
+    // Cae de a poco y se queda en el suelo
+    if (e.caida < 1) { e.caida = Math.min(1, e.caida + dt * 2.5); e.grupo.rotation.x = -e.caida * Math.PI / 2 * 0.95; e.grupo.position.y = altura(e.x, e.z) + e.caida * 0.15; }
+    return;
+  }
+  const o = posicionObjetivo(e);
+  const dJugador = Math.hypot(jugador.x - e.x, jugador.z - e.z);
+  // Miran hacia su objetivo
+  e.grupo.rotation.y = Math.atan2(o.x - e.x, o.z - e.z);
+  e.espera -= dt;
+
+  if (e.estado === "avanzar") {
+    if (e.agachadoAhora) ponerPostura(e, false);
+    const dx = e.meta.x - e.x, dz = e.meta.z - e.z, d = Math.hypot(dx, dz);
+    if (d < 0.6) { e.estado = "cubierto"; e.espera = 1.2 + Math.random() * 2.2; ponerPostura(e, true); return; }
+    const vel = 2.7 * dt;
+    [e.x, e.z] = empujarFueraDeObstaculos(e.x + dx / d * vel, e.z + dz / d * vel, 0.35);
+    e.grupo.position.set(e.x, altura(e.x, e.z), e.z);
+    e.dePie.position.y = Math.abs(Math.sin(performance.now() / 120 + e.x)) * 0.05;   // trote
+    // Si te tienen a tiro mientras avanzan, a veces frenan a tirar
+    if (dJugador < 60 && Math.random() < dt * 0.25) { e.estado = "disparar"; e.espera = 1.2 + Math.random(); e.rafaga = 3; }
+  } else if (e.estado === "cubierto") {
+    if (e.espera <= 0) {
+      if (dJugador < 85 && Math.random() < 0.65) { e.estado = "disparar"; e.espera = 1.4 + Math.random() * 1.2; e.rafaga = 2 + Math.floor(Math.random() * 3); ponerPostura(e, false); }
+      else { e.estado = "avanzar"; elegirCobertura(e); }
+    }
+  } else if (e.estado === "disparar") {
+    e.proximoTiro -= dt;
+    if (e.proximoTiro <= 0 && e.rafaga > 0) {
+      e.rafaga--; e.proximoTiro = 0.18 + Math.random() * 0.25;
+      dispararEnemigo(e, dJugador);
+    }
+    if (e.espera <= 0) {
+      if (Math.random() < 0.5) { e.estado = "cubierto"; e.espera = 1 + Math.random() * 2; ponerPostura(e, true); }
+      else { e.estado = "avanzar"; elegirCobertura(e); }
+    }
+  }
+}
+function dispararEnemigo(e, dJugador) {
+  const boca = new THREE.Vector3(e.x, altura(e.x, e.z) + 1.45, e.z);
+  fogonazoEn(boca);
+  const tiraleAlJugador = e.objetivo === "jugador" || dJugador < 25;
+  const blanco = tiraleAlJugador
+    ? new THREE.Vector3(jugador.x + (Math.random() - 0.5) * 2, camara.position.y + (Math.random() - 0.5) * 1.2, jugador.z + (Math.random() - 0.5) * 2)
+    : new THREE.Vector3(e.objetivo.x + (Math.random() - 0.5) * 3, altura(e.objetivo.x, e.objetivo.z) + 1, e.objetivo.z + (Math.random() - 0.5) * 3);
+  trazadora(boca, blanco, 0xff4a30);
+  sonidoDisparoLejano(dJugador);
+  if (tiraleAlJugador) {
+    if (Math.random() < probabilidadDeImpacto(dJugador)) recibirDano(14 + Math.random() * 12);
+    else if (dJugador < 50 && Math.random() < 0.4) sonidoSilbidoBala();
+  }
+}
+function matarEnemigo(e, loHiceYo = true) {
+  e.vivo = false; e.estado = "caido"; e.caida = 0;
+  if (loHiceYo) sonidoImpacto();
+  e.grupo.remove(e.hitbox);   // ya no se le puede pegar
+  actualizarHud();
+}
+
+// -------------------------------------------------------------
+// 17. LA MISIÓN 3: oleadas, aliados, artillería y el repliegue
+// -------------------------------------------------------------
+const combate = { fase: "espera", oleada: 0, porAparecer: 0, proximoEnemigo: 0, espera: 0, objetivo: "", proximoGrito: 6, proximaBomba: 10, repliegueTiempo: 0 };
+
+function prepararCombate() {
+  for (const e of enemigos) escena.remove(e.grupo);
+  enemigos.length = 0;
+  Object.assign(combate, { fase: "espera", oleada: 0, porAparecer: 0, proximoEnemigo: 0, espera: 6, objetivo: "Aguantá tu pozo. Asomate para tirar y agachate para cubrirte", proximoGrito: 8, proximaBomba: 12 });
+}
+function actualizarCombate(dt) {
+  // Oleadas: llegan de a uno, desde el oeste
+  if (combate.fase === "espera") {
+    combate.espera -= dt;
+    if (combate.espera <= 0) {
+      combate.fase = "oleada"; combate.porAparecer = OLEADAS[combate.oleada]; combate.proximoEnemigo = 0;
+      gritar(combate.oleada === 0 ? "Flaco: \"¡Ahí vienen! ¡Están subiendo!\"" : "Cabo Ríos: \"¡Vuelven a subir! ¡Atentos!\"");
+      actualizarHud();
+    }
+  } else if (combate.fase === "oleada") {
+    combate.proximoEnemigo -= dt;
+    if (combate.porAparecer > 0 && combate.proximoEnemigo <= 0) {
+      crearEnemigo(); combate.porAparecer--; combate.proximoEnemigo = 1.4 + Math.random() * 1.8; actualizarHud();
+    }
+    if (combate.porAparecer === 0 && enemigos.every(e => !e.vivo)) {
+      combate.oleada++;
+      if (combate.oleada < OLEADAS.length) {
+        combate.fase = "espera"; combate.espera = 9;
+        mostrarMensaje("Un respiro. Recargá y tomá munición del cajón (E).", 6000);
+        actualizarHud();
+      } else {
+        combate.fase = "repliegue"; combate.repliegueTiempo = 0; combate.porAparecer = 0;
+        combate.objetivo = "¡Replegate a la trinchera de la cresta, con el sargento!";
+        gritar("Sargento Medina: \"¡Todos a la cresta! ¡Repliéguense a la trinchera!\"", 4000);
+        for (let i = 0; i < 4; i++) setTimeout(() => { if (combate.fase === "repliegue" && jugando) crearEnemigo(); }, 1500 + i * 2500);
+        actualizarHud();
+      }
+    }
+  } else if (combate.fase === "repliegue") {
+    if (Math.hypot(jugador.x - CRESTA.x, jugador.z - CRESTA.z) < 4) terminarMision3(true);
+  }
+
+  // Artillería y morteros: caen cerca, sobre todo en la ladera
+  combate.proximaBomba -= dt;
+  if (combate.proximaBomba <= 0) {
+    combate.proximaBomba = 7 + Math.random() * 10;
+    const a = Math.random() * Math.PI * 2, d = 14 + Math.random() * 30;
+    explosion(jugador.x + Math.cos(a) * d - 8, jugador.z + Math.sin(a) * d);
+  }
+  // Los compañeros gritan cosas
+  combate.proximoGrito -= dt;
+  if (combate.proximoGrito <= 0 && combate.fase === "oleada") {
+    combate.proximoGrito = 9 + Math.random() * 9;
+    gritar(GRITOS_ALIADOS[Math.floor(Math.random() * GRITOS_ALIADOS.length)]);
+  }
+  // Los compañeros también tiran (desde sus pozos)
+  for (const per of Object.values(personajes)) {
+    per.proximoTiro -= dt;
+    if (per.proximoTiro > 0) continue;
+    per.proximoTiro = 1.4 + Math.random() * 2.4;
+    const vivos = enemigos.filter(e => e.vivo && Math.hypot(e.x - per.x, e.z - per.z) < 75);
+    if (!vivos.length) continue;
+    const blanco = vivos[Math.floor(Math.random() * vivos.length)];
+    const boca = new THREE.Vector3(per.x, altura(per.x, per.z) + 1.1, per.z);
+    fogonazoEn(boca);
+    trazadora(boca, new THREE.Vector3(blanco.x + (Math.random() - 0.5) * 2, altura(blanco.x, blanco.z) + 1, blanco.z + (Math.random() - 0.5) * 2), 0xffa040);
+    sonidoDisparoLejano(Math.hypot(per.x - jugador.x, per.z - jugador.z) * 0.5);
+    if (Math.random() < 0.09) matarEnemigo(blanco, false);
+  }
+  // Recuperás vida si pasa un rato sin que te peguen (como en los Call of Duty)
+  if (performance.now() - jugador.ultimoDano > 4500 && jugador.vida < 100) jugador.vida = Math.min(100, jugador.vida + dt * 22);
+  document.getElementById("dano").style.opacity = String((1 - jugador.vida / 100) * 0.9);
+}
+function explosion(x, z) {
+  const y = altura(x, z);
+  luzExplosion.position.set(x, y + 3, z); luzExplosion.intensity = 6;
+  const t = terrones.find(q => q.vida <= 0) || terrones[0];
+  t.m.position.set(x, y, z); t.m.visible = true; t.vida = 1;
+  const d = Math.hypot(x - jugador.x, z - jugador.z);
+  sonidoExplosionCerca(d);
+  temblor = Math.max(temblor, Math.max(0, 1 - d / 35));
+  if (d < 9 && !(jugador.agachado && cavado(jugador.x, jugador.z) > 0.5)) recibirDano(30 * (1 - d / 9));
+}
+function recibirDano(cuanto) {
+  jugador.vida -= cuanto; jugador.ultimoDano = performance.now();
+  temblor = Math.max(temblor, 0.5);
+  estallido(0.2, 200, 0.4);
+  if (jugador.vida <= 0) terminarMision3(false);
+}
+
+// -------------------------------------------------------------
+// 18. LA MISIÓN 1: pasos en orden y diálogos
+// -------------------------------------------------------------
+function textoObjetivoM1() {
+  const p = PASOS_M1[paso];
+  if (!p) return "";
+  if (p.latas) return `${p.texto}: ${latasCaidas} / ${latas.length}`;
+  if (p.guardia) return `${p.texto} · ${Math.max(0, Math.ceil(p.guardia - guardiaHecha))} s`;
+  return p.texto;
+}
+function avanzarPasoM1() {
+  paso++;
+  if (paso >= PASOS_M1.length) { terminarMision1(); return; }
+  if (PASOS_M1[paso].latas && latasCaidas >= latas.length) { avanzarPasoM1(); return; }
+  actualizarHud();
+  mostrarMensaje("Nuevo objetivo: " + PASOS_M1[paso].texto, 4000);
+}
+function guardia(dt) {
+  const p = PASOS_M1[paso];
+  if (!p || !p.guardia) return;
+  const enPozo = Math.hypot(jugador.x - MI_POZO.x, jugador.z - MI_POZO.z) < MI_POZO.r + 1.5;
+  if (!enPozo) { if (Math.random() < dt * 0.5) mostrarMensaje("Volvé a tu pozo: la guardia se hace desde ahí.", 2000); return; }
+  const antes = guardiaHecha;
+  guardiaHecha += dt;
+  if (antes < 25 && guardiaHecha >= 25) mostrarMensaje("El Flaco, sin abrir los ojos: \"¿Escuchaste eso?… Debe ser el viento.\"", 5000);
+  if (antes < 45 && guardiaHecha >= 45) mostrarMensaje("A lo lejos, sobre el mar, se prende una luz y se apaga.", 4000);
+  if (Math.floor(antes) !== Math.floor(guardiaHecha)) actualizarHud();
+  if (guardiaHecha >= p.guardia) avanzarPasoM1();
+}
+
+function empezarDialogo(id) {
+  dialogo = { id, linea: 0 };
+  mostrarLinea();
+}
+function mostrarLinea() {
+  document.getElementById("dialogo").hidden = false;
+  document.getElementById("dialogo-quien").textContent = personajes[dialogo.id].nombre;
+  escribir(document.getElementById("dialogo-dice"), DIALOGOS[dialogo.id][dialogo.linea]);
+}
+function seguirDialogo() {
+  if (escribiendoAhora) { terminarEscritura(); return; }
+  dialogo.linea++;
+  if (dialogo.linea < DIALOGOS[dialogo.id].length) { mostrarLinea(); return; }
+  const id = dialogo.id;
+  dialogo = null;
+  document.getElementById("dialogo").hidden = true;
+  if (mision === 1 && PASOS_M1[paso] && PASOS_M1[paso].hablar === id) avanzarPasoM1();
+}
+
+// -------------------------------------------------------------
+// 19. MOVERSE: caminar, correr, agacharse y chocar con las cosas
+// -------------------------------------------------------------
+function moverJugador(dt) {
+  let adelante = 0, costado = 0;
+  if (!dialogo) {
+    if (teclas.KeyW || teclas.ArrowUp) adelante += 1;
+    if (teclas.KeyS || teclas.ArrowDown) adelante -= 1;
+    if (teclas.KeyD || teclas.ArrowRight) costado += 1;
+    if (teclas.KeyA || teclas.ArrowLeft) costado -= 1;
+  }
+  const largo = Math.hypot(adelante, costado);
+  const corriendo = (teclas.ShiftLeft || teclas.ShiftRight) && !jugador.agachado;
+  const vel = (jugador.agachado ? 1.7 : corriendo ? 6.2 : 3.4) * dt;
+  if (largo > 0) {
+    adelante /= largo; costado /= largo;
+    const sen = Math.sin(jugador.giro), cos = Math.cos(jugador.giro);
+    let nx = jugador.x + (-sen * adelante + cos * costado) * vel;
+    let nz = jugador.z + (-cos * adelante - sen * costado) * vel;
+    [nx, nz] = empujarFueraDeObstaculos(nx, nz, 0.4);
+    for (const per of Object.values(personajes)) {
+      const dx = nx - per.x, dz = nz - per.z, d = Math.hypot(dx, dz);
+      if (d < 0.75 && d > 0.001) { nx = per.x + dx / d * 0.75; nz = per.z + dz / d * 0.75; }
+    }
+    const r = Math.hypot(nx, nz);
+    if (r > 140) { nx *= 140 / r; nz *= 140 / r; }
+    jugador.x = nx; jugador.z = nz;
+    jugador.paso += dt * (jugador.agachado ? 5 : corriendo ? 11 : 7);
+  }
+  const ojosQueQuiero = jugador.agachado ? 0.95 : 1.65;
+  const antesCubierto = document.getElementById("postura").classList.contains("cubierto");
+  jugador.alturaOjos += (ojosQueQuiero - jugador.alturaOjos) * Math.min(1, dt * 10);
+  const bamboleo = largo > 0 ? Math.sin(jugador.paso) * (jugador.agachado ? 0.025 : 0.05) : 0;
+  // Temblor de las explosiones cercanas
+  temblor = Math.max(0, temblor - dt * 1.5);
+  const sacudon = temblor * 0.06;
+  camara.position.set(jugador.x + (Math.random() - 0.5) * sacudon, altura(jugador.x, jugador.z) + jugador.alturaOjos + bamboleo + (Math.random() - 0.5) * sacudon, jugador.z);
+  camara.rotation.set(jugador.cabeceo + (Math.random() - 0.5) * sacudon * 0.5, jugador.giro, 0);
+  retroceso = Math.max(0, retroceso - dt * 9);
+  fusil.position.set(POSICION_FUSIL.x + Math.cos(jugador.paso * 0.5) * (largo > 0 ? 0.012 : 0),
+                     POSICION_FUSIL.y + Math.abs(Math.sin(jugador.paso * 0.5)) * (largo > 0 ? 0.012 : 0) - (recargando ? 0.12 : 0),
+                     POSICION_FUSIL.z + retroceso * 0.06);
+  fusil.rotation.x = retroceso * 0.08 + (recargando ? 0.5 : 0);
+  const ahoraCubierto = jugador.agachado && cavado(jugador.x, jugador.z) > 0.5;
+  if (antesCubierto !== ahoraCubierto) actualizarHud();
+  // Tu propio vapor, de vez en cuando
+  if (Math.random() < dt * 0.35) {
+    const frente = new THREE.Vector3(); camara.getWorldDirection(frente);
+    soplarVapor(camara.position.clone().add(frente.multiplyScalar(0.45)).add(new THREE.Vector3(0, -0.12, 0)));
+  }
+}
+
+// ¿Hay alguien cerca para hablar, o el cajón de munición?
+let cercano = null;
+function buscarCercano() {
+  cercano = null;
+  const pista = document.getElementById("pista");
+  if (dialogo) { pista.hidden = true; return; }
+  if (mision === 1) {
+    for (const per of Object.values(personajes)) {
+      if (DIALOGOS[per.id] && Math.hypot(per.x - jugador.x, per.z - jugador.z) < 3.2) { cercano = { tipo: "hablar", id: per.id, nombre: per.nombre }; break; }
+    }
+  } else if (mision === 3 && Math.hypot(cajonPozo.position.x - jugador.x, cajonPozo.position.z - jugador.z) < 2.6 && reserva < 140) {
+    cercano = { tipo: "municion" };
+  }
+  pista.hidden = !cercano;
+  if (cercano) pista.innerHTML = cercano.tipo === "hablar" ? `<b>E</b> · Hablar con ${cercano.nombre.split(",")[0]}` : `<b>E</b> · Tomar munición del cajón`;
+}
+
+// Brújula: una flecha arriba que apunta al objetivo, con la distancia
+function actualizarBrujula() {
+  let destino = null;
+  if (mision === 1) { const pso = PASOS_M1[paso]; destino = pso && pso.destino(); }
+  else if (mision === 3 && combate.fase === "repliegue") destino = CRESTA;
+  const caja = document.getElementById("brujula");
+  if (!destino) { caja.hidden = true; return; }
+  caja.hidden = false;
+  const dx = destino.x - jugador.x, dz = destino.z - jugador.z;
+  const angulo = Math.atan2(-dx, -dz) - jugador.giro;
+  const rel = Math.atan2(Math.sin(angulo), Math.cos(angulo));
+  document.getElementById("flecha").style.transform = `rotate(${-rel}rad)`;
+  document.getElementById("distancia").textContent = `${Math.round(Math.hypot(dx, dz))} m`;
+}
+
+// -------------------------------------------------------------
+// 20. ANIMACIONES DEL MUNDO
+// -------------------------------------------------------------
+function animarBengalas(dt) {
+  let luzTotal = 0;
+  for (const b of bengalas) {
+    if (!b.activa) continue;
+    b.edad += dt;
+    if (b.vel.y > -1.6) b.vel.y -= 14 * dt;
+    if (b.vel.y < -1.6) b.vel.y = -1.6;
+    b.vel.x = b.vel.x * 0.98 + 0.02 * 1.2;   // el viento del oeste la lleva un poco hacia el este
+    b.vel.z *= 0.98;
+    b.bola.position.addScaledVector(b.vel, dt);
+    b.bola.position.x += Math.sin(b.edad * 1.3) * 0.02;
+    b.luz.position.copy(b.bola.position);
+    const brillo = Math.min(1, b.edad * 2) * Math.max(0, Math.min(1, (22 - b.edad) / 4)) * (0.85 + Math.random() * 0.15);
+    b.luz.intensity = 2.6 * brillo;
+    luzTotal = Math.max(luzTotal, brillo * (b.mia ? 1 : 0.4));
+    if (b.edad > 22 || b.bola.position.y < altura(b.bola.position.x, b.bola.position.z)) { b.activa = false; b.bola.visible = false; b.luz.intensity = 0; }
+  }
+  escena.background.copy(COLOR_NOCHE).lerp(new THREE.Color(0x2a2a30), luzTotal * 0.5);
+  escena.fog.color.copy(escena.background);
+}
+
+let proximaArtilleria = 8, proximaBengalaLejana = 4, destelloLejano = 0;
+function ambiente(dt, t) {
+  const tension = mision === 3 || (mision === 1 && PASOS_M1[paso] && PASOS_M1[paso].guardia);
+  proximaBengalaLejana -= dt;
+  if (proximaBengalaLejana <= 0) {
+    const a = Math.PI + (Math.random() - 0.5) * 1.4, d = (mision === 3 ? 70 : 110) + Math.random() * 50;
+    lanzarBengala(new THREE.Vector3(Math.cos(a) * d, 22, Math.sin(a) * d - 20), new THREE.Vector3(0, 14, 0), false);
+    proximaBengalaLejana = (mision === 3 ? 4 : tension ? 6 : 10) + Math.random() * 8;
+  }
+  proximaArtilleria -= dt;
+  if (proximaArtilleria <= 0) {
+    const a = Math.PI + (Math.random() - 0.5) * 2.2, d = 200 + Math.random() * 140;
+    luzLejana.position.set(Math.cos(a) * d, 15, Math.sin(a) * d - 20);
+    destelloLejano = 1;
+    setTimeout(() => sonidoArtilleria(d), d / 340 * 1000);
+    proximaArtilleria = (mision === 3 ? 5 : 10) + Math.random() * 15;
+  }
+  destelloLejano = Math.max(0, destelloLejano - dt * 3);
+  luzLejana.intensity = destelloLejano * 4;
+  luzExplosion.intensity = Math.max(0, luzExplosion.intensity - dt * 18);
+  for (const l of lucesFogonazo) l.intensity = Math.max(0, l.intensity - dt * 40);
+  if (gananciaViento) gananciaViento.gain.value = 0.05 + (Math.sin(t * 0.3) * 0.5 + 0.5) * 0.06;
+  if (luzVela) luzVela.intensity = 0.8 + Math.sin(t * 13) * 0.1 + Math.random() * 0.1;
+
+  // Aguanieve: cae y el viento del oeste la empuja; se queda siempre alrededor tuyo
+  const g = geoLluvia.attributes.position.array, cx = camara.position.x, cy = camara.position.y, cz = camara.position.z;
+  const rafaga = 5 + Math.sin(t * 0.4) * 3;
+  for (let i = 0; i < CANT_GOTAS; i++) {
+    g[i * 3] += rafaga * dt; g[i * 3 + 1] -= 7 * dt;
+    if (g[i * 3 + 1] < -6) g[i * 3 + 1] += CAJA_LLUVIA.y;
+    if (g[i * 3] > CAJA_LLUVIA.x / 2) g[i * 3] -= CAJA_LLUVIA.x;
+  }
+  geoLluvia.attributes.position.needsUpdate = true;
+  lluvia.position.set(cx, cy - 8, cz);
+
+  // Trazadoras, tierra de las explosiones y vapor
+  for (const tr of trazadoras) { if (tr.vida > 0) { tr.vida -= dt; tr.linea.material.opacity = Math.max(0, tr.vida / 0.09); } }
+  for (const te of terrones) {
+    if (te.vida <= 0) continue;
+    te.vida -= dt * 1.2;
+    te.m.scale.setScalar(1 + (1 - te.vida) * 4); te.m.position.y += dt * 3; te.m.material.opacity = Math.max(0, te.vida * 0.8);
+    if (te.vida <= 0) te.m.visible = false;
+  }
+  for (const v of vapores) {
+    if (v.vida <= 0) continue;
+    v.vida -= dt;
+    v.m.position.y += dt * 0.25; v.m.position.x += dt * 0.4;
+    v.m.scale.setScalar(1 + (1.4 - v.vida) * 1.6);
+    v.m.material.opacity = Math.max(0, Math.min(0.25, v.vida * 0.3));
+    if (v.vida <= 0) v.m.visible = false;
+  }
+}
+
+function animarLatas(dt) {
+  for (const l of latas) {
+    if (!l.volando) continue;
+    l.vel.y -= 9.8 * dt;
+    l.lata.position.addScaledVector(l.vel, dt);
+    l.lata.rotation.x += l.giro.x * dt; l.lata.rotation.z += l.giro.z * dt;
+    const suelo = altura(l.lata.position.x, l.lata.position.z) + 0.09;
+    if (l.lata.position.y < suelo) { l.lata.position.y = suelo; l.vel.multiplyScalar(0.3); l.vel.y = Math.abs(l.vel.y) * 0.3; l.giro.multiplyScalar(0.5); }
+  }
+}
+
+function animarPersonajes(t, dt) {
+  for (const per of Object.values(personajes)) {
+    const u = per.grupo.userData;
+    // Respiran, giran la cabeza hacia vos si estás cerca, y asienten cuando te hablan
+    u.torso.position.y = u.baseY + Math.sin(t * 1.6 + per.x) * 0.012;
+    const dx = jugador.x - per.x, dz = jugador.z - per.z, cerca = Math.hypot(dx, dz) < 8 && jugando;
+    let mirar = 0;
+    if (cerca) { const ang = Math.atan2(dx, dz) - per.grupo.rotation.y; mirar = Math.max(-1, Math.min(1, Math.atan2(Math.sin(ang), Math.cos(ang)))); }
+    u.cabeza.rotation.y += (mirar - u.cabeza.rotation.y) * Math.min(1, dt * 4);
+    const hablando = dialogo && dialogo.id === per.id && escribiendoAhora;
+    u.cabeza.rotation.x = hablando ? Math.sin(t * 9) * 0.06 : u.cabeza.rotation.x * 0.9;
+    per.proximoVapor -= dt;
+    if (per.proximoVapor <= 0) {
+      per.proximoVapor = 2.5 + Math.random() * 2;
+      const cab = new THREE.Vector3(); u.cabeza.getWorldPosition(cab);
+      soplarVapor(cab.add(new THREE.Vector3(Math.sin(per.grupo.rotation.y) * 0.18, -0.05, Math.cos(per.grupo.rotation.y) * 0.18)));
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// 21. EL LOOP PRINCIPAL (~60 veces por segundo)
+// -------------------------------------------------------------
+const reloj = new THREE.Clock();
+function loop() {
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.05, reloj.getDelta()), t = reloj.elapsedTime;
+  if (jugando && !pausado) {
+    moverJugador(dt);
+    buscarCercano();
+    actualizarBrujula();
+    if (mision === 1) guardia(dt);
+    if (mision === 3) { actualizarCombate(dt); for (const e of enemigos) pensarEnemigo(e, dt); }
+  } else if (!jugando) {   // en el menú, la cámara mira el monte girando despacito
+    camara.position.set(Math.sin(t * 0.05) * 70, 26, 40 + Math.cos(t * 0.05) * 20);
+    camara.lookAt(MONTE.x, 28, MONTE.z);
+  }
+  if (!pausado) {
+    animarBengalas(dt);
+    animarLatas(dt);
+    animarPersonajes(t, dt);
+    ambiente(dt, t);
+  }
+  renderer.render(escena, camara);
+}
+loop();
+
+// -------------------------------------------------------------
+// 22. TEXTO CON EFECTO MÁQUINA DE ESCRIBIR
+// -------------------------------------------------------------
+function escribir(el, texto, despues) {
+  if (escribiendoAhora) clearInterval(escribiendoAhora.reloj);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { el.textContent = texto; escribiendoAhora = null; despues && despues(); return; }
+  let i = 0;
+  escribiendoAhora = { el, texto, despues, reloj: setInterval(() => {
+    el.textContent = texto.slice(0, ++i);
+    if (i >= texto.length) terminarEscritura();
+  }, 26) };
+}
+function terminarEscritura() {
+  if (!escribiendoAhora) return;
+  const { el, texto, despues, reloj: r } = escribiendoAhora;
+  clearInterval(r); el.textContent = texto; escribiendoAhora = null;
+  despues && despues();
+}
+
+// -------------------------------------------------------------
+// 23. MENÚ, INICIO Y FINAL DE CADA MISIÓN
+// -------------------------------------------------------------
+if (matchMedia("(pointer: coarse)").matches) document.getElementById("aviso-celu").hidden = false;
+const mostrar = (id, si) => { document.getElementById(id).hidden = !si; };
+const HUD = ["objetivo", "equipo", "mira", "postura"];
+
+function abrirIntro(n) {
+  mision = n;
+  const m = MISIONES[n];
+  document.getElementById("intro-lugar").textContent = m.lugar;
+  document.getElementById("intro-titulo").textContent = m.titulo;
+  document.getElementById("linea1").textContent = ""; document.getElementById("linea2").textContent = "";
+  mostrar("menu", false); mostrar("final", false); mostrar("intro", true);
+  escribir(document.getElementById("linea1"), m.linea1, () => escribir(document.getElementById("linea2"), m.linea2));
+}
+function volverAlMenu() {
+  jugando = false; pausado = false;
+  if (document.exitPointerLock) document.exitPointerLock();
+  HUD.concat(["pausa", "brujula", "pista"]).forEach(id => mostrar(id, false));
+  mostrar("intro", false); mostrar("final", false); mostrar("menu", true);
+  document.getElementById("dano").style.opacity = "0";
+}
+document.querySelectorAll(".mision[data-mision]").forEach(b => b.addEventListener("click", () => abrirIntro(Number(b.dataset.mision))));
+document.getElementById("volver").addEventListener("click", volverAlMenu);
+document.getElementById("al-menu").addEventListener("click", volverAlMenu);
+document.getElementById("otra-vez").addEventListener("click", () => abrirIntro(mision));
+
+function empezar() {
+  if (escribiendoAhora) { terminarEscritura(); terminarEscritura(); }
+  prepararAudio();
+  if (audio && audio.state === "suspended") audio.resume();
+  sacarPersonajes();
+  dialogo = null; disparos = 0; aciertos = 0; recargando = false;
+  Object.assign(jugador, { cabeceo: 0, paso: 0, agachado: false, alturaOjos: 1.65, vida: 100, ultimoDano: 0 });
+  for (const e of enemigos) escena.remove(e.grupo);
+  enemigos.length = 0;
+  if (mision === 1) {
+    Object.assign(jugador, { x: INICIO_M1.x, z: INICIO_M1.z, giro: INICIO_M1.giro });
+    balas = 20; reserva = 60; misBengalas = 4; paso = 0; guardiaHecha = 0; latasCaidas = 0;
+    latas.forEach(l => { l.volando = false; l.lata.position.copy(l.inicio); l.lata.rotation.set(0, 0, 0); });
+    ponerPersonaje("sargento", NOMBRES.sargento, BUNKER.x + BUNKER.w / 2, BUNKER.z + BUNKER.d + 1.4, false, 0);
+    ponerPersonaje("cabo", NOMBRES.cabo, -4, -13.4, false, -1.2);
+    ponerPersonaje("flaco", NOMBRES.flaco, MI_POZO.x - 0.5, MI_POZO.z + 0.2, true, -Math.PI / 2);
+    mostrarMensaje("Seguí la flecha de arriba para encontrar al sargento.", 5000);
+  } else {
+    Object.assign(jugador, { x: MI_POZO.x + 0.4, z: MI_POZO.z - 0.3, giro: Math.PI / 2, agachado: true, alturaOjos: 0.95 });
+    balas = 20; reserva = 140; misBengalas = 6;
+    ponerPersonaje("flaco", NOMBRES.flaco, MI_POZO.x - 0.6, MI_POZO.z + 0.5, true, -Math.PI / 2);
+    ponerPersonaje("cabo", NOMBRES.cabo, POZOS[1].x, POZOS[1].z, true, -Math.PI / 2);
+    ponerPersonaje("correntino", NOMBRES.correntino, POZOS[2].x, POZOS[2].z, true, -Math.PI / 2);
+    ponerPersonaje("sargento", NOMBRES.sargento, CRESTA.x, CRESTA.z - 0.6, false, -Math.PI / 2);
+    prepararCombate();
+    mostrarMensaje("Agachado (C) estás cubierto. Para tirar, levantate y asomate.", 6000);
+  }
+  mostrar("intro", false); mostrar("final", false); mostrar("dialogo", false);
+  HUD.forEach(id => mostrar(id, true));
+  document.getElementById("dano").style.opacity = "0";
+  jugando = true; pausado = false; inicioPartida = performance.now();
+  actualizarHud();
+  capturarMouse();
+}
+document.getElementById("empezar").addEventListener("click", empezar);
+
+function mostrarFinal(lugar, titulo, t1, t2) {
+  jugando = false; pausado = false;
+  if (document.exitPointerLock) document.exitPointerLock();
+  HUD.concat(["pausa", "brujula", "pista"]).forEach(id => mostrar(id, false));
+  const segundos = Math.round((performance.now() - inicioPartida) / 1000);
+  document.getElementById("final-lugar").textContent = lugar;
+  document.getElementById("final-titulo").textContent = titulo;
+  document.getElementById("final-texto1").textContent = t1;
+  document.getElementById("final-texto2").textContent = t2;
+  const punteria = disparos ? Math.round(aciertos / disparos * 100) : 0;
+  document.getElementById("resumen").textContent = `Tiempo: ${Math.floor(segundos / 60)}:${String(segundos % 60).padStart(2, "0")} · Disparos: ${disparos} · Puntería: ${punteria}%`;
+  document.getElementById("otra-vez").textContent = titulo === "Caíste" ? "Reintentar" : "Jugar de nuevo";
+  mostrar("final", true);
+}
+function terminarMision1() {
+  aciertos = latasCaidas;
+  mostrarFinal("Fin de la Misión 1", "Tres noches después",
+    "El 11 de junio, a la noche, el 3er Batallón de Paracaidistas británico atacó Monte Longdon. El combate duró casi hasta el amanecer.",
+    "El Flaco te guardó el lugar en el pozo hasta el final.");
+}
+function terminarMision3(ganaste) {
+  if (!jugando) return;
+  if (ganaste) {
+    mostrarFinal("Fin de la Misión 3 · prototipo", "Llegaste a la cresta",
+      "El sargento te agarra del brazo y te tira adentro de la trinchera. El Flaco llega atrás tuyo, sin aire, pero entero.",
+      "La pelea en Longdon siguió casi toda la noche. La Misión 4, el contraataque, está en camino.");
+  } else {
+    mostrarFinal("Misión 3 · La noche del 11", "Caíste",
+      "Te asomaste demasiado. En la oscuridad, entre las rocas, no se sabe de dónde viene cada bala.",
+      "Consejo: agachate (C) entre ráfaga y ráfaga, y asomate solo para tirar. Usá las bengalas para verlos venir.");
+  }
+}
+</script>
+
+</body>
+</html>
