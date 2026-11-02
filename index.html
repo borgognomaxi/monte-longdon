@@ -389,6 +389,8 @@ const matsRoca = [0x686b70, 0x5f6266, 0x72716b].map(c => new THREE.MeshLambertMa
 function lugarDespejado(x, z, margen) {
   if (distanciaATrinchera(x, z) < ANCHO_TRINCHERA + margen) return false;
   if (POZOS.some(p => Math.hypot(x - p.x, z - p.z) < p.r + 2 + margen)) return false;
+  // Campo de tiro: adelante de cada pozo (hacia el oeste) no hay piedras, en forma de abanico, así ves y podés tirar
+  if (POZOS.some(p => x < p.x + margen && x > p.x - 20 - margen && Math.abs(z - p.z) < 3 + margen + (p.x - x) * 0.5)) return false;
   if (x > BUNKER.x - 3 - margen && x < BUNKER.x + BUNKER.w + 3 + margen && z > BUNKER.z - 3 - margen && z < BUNKER.z + BUNKER.d + 4 + margen) return false;
   if (Math.hypot(x - 62, z + 20) < 8 + margen) return false;
   return true;
