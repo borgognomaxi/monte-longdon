@@ -255,7 +255,8 @@ const MONTE = { x: 0, z: -20 };
 function alturaNatural(x, z) {
   let h = 2.5 + ruido(x * 0.018, z * 0.018) * 6 + ruido(x * 0.07, z * 0.07) * 2 + ruido(x * 0.3, z * 0.3) * 0.3;
   const dx = x - MONTE.x, dz = z - MONTE.z;
-  h += 30 * Math.exp(-(dx * dx) / (2 * 70 * 70) - (dz * dz) / (2 * 26 * 26));
+  // El monte: cresta redondeada arriba y laderas parejas (así desde los pozos se ve hacia abajo, sin "terreno muerto")
+  h += 30 * Math.exp(-(Math.sqrt(dx * dx + 225) - 15) / 42) * Math.exp(-(dz * dz) / (2 * 26 * 26));
   const r = Math.hypot(x, z);
   if (r > 150) h -= (r - 150) * 0.5;
   return h;
@@ -829,7 +830,9 @@ function disparar() {
   const objetivos = mision === 1 ? blancosLatas : enemigos.filter(e => e.vivo).map(e => e.hitbox);
   const choques = rayo.intersectObjects(objetivos.concat(mallasRocas, [instBolsas, terreno]), false);
   // Desde adentro del pozo, las bolsas pegadas a tu cara no te tapan el tiro
-  const primero = choques.find(c => !(c.object === instBolsas && c.distance < 2.6));
+  // Si estás en un pozo o trinchera, te asomás por encima del borde: la tierra pegada a tu cara no frena la bala
+  const asomado = cavado(jugador.x, jugador.z) > 0.3;
+  const primero = choques.find(c => !((c.object === instBolsas && c.distance < 2.6) || (asomado && c.object === terreno && c.distance < 3.5)));
   if (!primero) { actualizarHud(); return; }
   const lata = primero.object.userData.lata, enemigo = primero.object.userData.enemigo;
   if (lata && !lata.volando) {
@@ -931,7 +934,7 @@ function empujarFueraDeObstaculos(x, z, radio) {
 }
 // ¿Qué tan fácil es pegarte? Depende de la distancia, de si estás agachado y de si estás en un pozo
 function probabilidadDeImpacto(d) {
-  let p = 0.2 * Math.max(0.15, 1 - d / 110);
+  let p = 0.32 * Math.max(0.2, 1 - d / 130);
   const enPozo = cavado(jugador.x, jugador.z) > 0.5;
   if (jugador.agachado && enPozo) p *= 0.04;          // agachado en el pozo: casi imposible
   else if (jugador.agachado) p *= 0.45;
@@ -978,6 +981,15 @@ function pensarEnemigo(e, dt) {
     }
   }
 }
+// ¿Se ven? Recorremos la línea entre los dos puntos y nos fijamos si el suelo la tapa en algún lado
+function hayLineaDeVista(ax, az, ay, bx, bz, by) {
+  const d = Math.hypot(bx - ax, bz - az);
+  for (let s = 1.5; s < d - 1.5; s += 0.6) {
+    const f = s / d;
+    if (altura(ax + (bx - ax) * f, az + (bz - az) * f) > ay + (by - ay) * f) return false;
+  }
+  return true;
+}
 function dispararEnemigo(e, dJugador) {
   const boca = new THREE.Vector3(e.x, altura(e.x, e.z) + 1.45, e.z);
   fogonazoEn(boca);
@@ -987,8 +999,10 @@ function dispararEnemigo(e, dJugador) {
     : new THREE.Vector3(e.objetivo.x + (Math.random() - 0.5) * 3, altura(e.objetivo.x, e.objetivo.z) + 1, e.objetivo.z + (Math.random() - 0.5) * 3);
   trazadora(boca, blanco, 0xff4a30);
   sonidoDisparoLejano(dJugador);
+  // Solo te puede pegar si te ve: si el suelo está en el medio, la bala no llega
+  const teVe = hayLineaDeVista(e.x, e.z, boca.y, jugador.x, jugador.z, camara.position.y);
   if (tiraleAlJugador) {
-    if (Math.random() < probabilidadDeImpacto(dJugador)) recibirDano(14 + Math.random() * 12);
+    if (teVe && Math.random() < probabilidadDeImpacto(dJugador)) recibirDano(14 + Math.random() * 12);
     else if (dJugador < 50 && Math.random() < 0.4) sonidoSilbidoBala();
   }
 }
@@ -1066,7 +1080,7 @@ function actualizarCombate(dt) {
     fogonazoEn(boca);
     trazadora(boca, new THREE.Vector3(blanco.x + (Math.random() - 0.5) * 2, altura(blanco.x, blanco.z) + 1, blanco.z + (Math.random() - 0.5) * 2), 0xffa040);
     sonidoDisparoLejano(Math.hypot(per.x - jugador.x, per.z - jugador.z) * 0.5);
-    if (Math.random() < 0.09) matarEnemigo(blanco, false);
+    if (Math.random() < 0.035) matarEnemigo(blanco, false);
   }
   // Recuperás vida si pasa un rato sin que te peguen (como en los Call of Duty)
   if (performance.now() - jugador.ultimoDano > 4500 && jugador.vida < 100) jugador.vida = Math.min(100, jugador.vida + dt * 22);
